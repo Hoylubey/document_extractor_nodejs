@@ -8,7 +8,6 @@ const ExcelJS = require('exceljs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 
 // Multer disk storage configuration
@@ -16,14 +15,13 @@ const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         const relativePath = path.dirname(file.originalname);
         const destinationPath = path.join(UPLOAD_DIR, relativePath);
-        fs.ensureDirSync(destinationPath); // Klasör yoksa oluştur
+        fs.ensureDirSync(destinationPath);
         cb(null, destinationPath);
     },
     filename: (req, file, cb) => {
-        cb(null, path.basename(file.originalname)); // Orijinal dosya adını kullan
+        cb(null, path.basename(file.originalname));
     }
 });
-
 const upload = multer({ storage: storage });
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -32,7 +30,7 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Information extraction function
+// Bilgi çıkarma fonksiyonu
 async function extractInfo(filePath, originalRelativePath) {
     const docInfo = {
         'Döküman No': '',
@@ -43,32 +41,24 @@ async function extractInfo(filePath, originalRelativePath) {
         'Sorumlu Departman': ''
     };
 
-    // --- Dosya İsmi Mantığı (Onay ve Hata Ayıklama Eklendi) ---
-    // DEBUGGING: Orijinal dosya adını konsola yazdır
-    console.log(`DEBUG: Original Relative Path received: ${originalRelativePath}`);
-
     const fullFileNameWithExt = path.basename(originalRelativePath);
     const fileNameWithoutExt = path.parse(fullFileNameWithExt).name;
 
-    const firstHyphenIndex = fileNameWithoutExt.indexOf('-');
-    if (firstHyphenIndex !== -1 && firstHyphenIndex < fileNameWithoutExt.length - 1) {
-        docInfo['Dosya İsmi'] = fileNameWithoutExt.substring(firstHyphenIndex + 1).trim();
-    } else {
+    try {
+        // Türkçe karakter bozulmalarını düzelt
+        const correctedFileName = Buffer.from(fileNameWithoutExt, 'latin1').toString('utf-8');
+        const firstHyphenIndex = correctedFileName.indexOf('-');
+        docInfo['Dosya İsmi'] = firstHyphenIndex !== -1 && firstHyphenIndex < correctedFileName.length - 1
+            ? correctedFileName.substring(firstHyphenIndex + 1).trim()
+            : correctedFileName.trim();
+    } catch {
         docInfo['Dosya İsmi'] = fileNameWithoutExt.trim();
     }
-    // DEBUGGING: İşlenmiş Dosya İsmini konsola yazdır
-    console.log(`DEBUG: Processed 'Dosya İsmi': ${docInfo['Dosya İsmi']}`);
 
-    // --- Sorumlu Departman Mantığı ---
-    const pathSegments = originalRelativePath.split(path.sep);
-    
+    const pathSegments = originalRelativePath.split(/[\\/]/);
     if (pathSegments.length > 1) {
         const folderNameIndex = pathSegments.length - 2;
-        if (folderNameIndex >= 0) {
-            docInfo['Sorumlu Departman'] = pathSegments[folderNameIndex];
-        } else {
-            docInfo['Sorumlu Departman'] = 'Ana Klasör';
-        }
+        docInfo['Sorumlu Departman'] = folderNameIndex >= 0 ? pathSegments[folderNameIndex] : 'Ana Klasör';
     } else {
         docInfo['Sorumlu Departman'] = 'Ana Klasör';
     }
@@ -80,28 +70,19 @@ async function extractInfo(filePath, originalRelativePath) {
         if (fileExtension === '.pdf') {
             const dataBuffer = fs.readFileSync(filePath);
             const data = await PdfParse(dataBuffer);
-            textContent = data.text;
-            console.log(`--- PDF Metin İçeriği (${path.basename(filePath)}) ---`);
-            console.log(textContent);
-            console.log('--- Metin İçeriği Sonu ---');
+            textContent = data.text.normalize('NFC');
         } else if (fileExtension === '.docx' || fileExtension === '.doc') {
             const result = await mammoth.extractRawText({ path: filePath });
-            textContent = result.value;
+            textContent = result.value.normalize('NFC');
         }
     } catch (e) {
         console.error(`Dosya metni okunurken hata oluştu ${filePath}:`, e);
         return docInfo;
     }
 
-    // --- Bilgi Çekme ---
     let match;
-
-    // Doküman No (Düzeltildi: Sadece belge numarası karakterlerini yakala, boşlukları değil)
-    // Örn: TR.01.STD.001 gibi ifadeler için
     match = textContent.match(/Doküman No\s*[:\s]*([A-Z0-9.\-]+)/i);
     if (match) docInfo['Döküman No'] = match[1].trim();
-    // DEBUGGING: Çekilen Döküman No'yu konsola yazdır
-    console.log(`DEBUG: Extracted 'Döküman No': ${docInfo['Döküman No']}`);
 
     match = textContent.match(/Yayın Tarihi\s*[:\s]*(\d{2}[.\/]\d{2}[.\/]\d{4})/);
     if (match) docInfo['Tarih'] = match[1].trim();
@@ -115,21 +96,18 @@ async function extractInfo(filePath, originalRelativePath) {
     return docInfo;
 }
 
+// Yükleme ve işleme rotası
 app.post('/upload', upload.array('files'), async (req, res) => {
     const uploadedFiles = req.files;
     if (!uploadedFiles || uploadedFiles.length === 0) {
-        return res.status(400).send('No files uploaded or no folder selected.');
+        return res.status(400).send('Dosya yüklenmedi veya klasör seçilmedi.');
     }
 
     const extractedData = [];
-
     for (const file of uploadedFiles) {
         const originalRelativePath = file.originalname;
-        
         const data = await extractInfo(file.path, originalRelativePath);
-        if (data) {
-            extractedData.push(data);
-        }
+        if (data) extractedData.push(data);
 
         try {
             await fs.remove(file.path);
@@ -141,11 +119,11 @@ app.post('/upload', upload.array('files'), async (req, res) => {
     try {
         await fs.emptyDir(UPLOAD_DIR);
     } catch (e) {
-        console.error(`Geçici yükleme klasörü temizlenirken hata oluştu ${UPLOAD_DIR}:`, e);
+        console.error(`Geçici klasör temizlenirken hata oluştu ${UPLOAD_DIR}:`, e);
     }
 
     if (extractedData.length === 0) {
-        return res.status(400).send('No PDF or Word documents found or processed.');
+        return res.status(400).send('Hiçbir geçerli belge işlenemedi.');
     }
 
     const workbook = new ExcelJS.Workbook();
