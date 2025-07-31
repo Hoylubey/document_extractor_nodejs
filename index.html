@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Belge Bilgisi Çıkarıcı (Node.js)</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Klasörden Belge Bilgisi Çıkarıcı</h1>
+        <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
+            <label for="folderInput">Lütfen bir klasör seçin:</label><br>
+            <input type="file" id="folderInput" name="folder" webkitdirectory directory multiple><br>
+            <button type="submit">Belgeleri Tara ve Excel Oluştur</button>
+        </form>
+        <div id="message"></div>
+    </div>
+
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', async function(event) {
+            event.preventDefault(); // Formun normal submit'ini engelle
+
+            const formData = new FormData();
+            const files = document.getElementById('folderInput').files;
+
+            if (files.length === 0) {
+                document.getElementById('message').innerText = 'Lütfen bir klasör seçin.';
+                document.getElementById('message').className = 'error';
+                return;
+            }
+
+            // Her dosyayı FormData'ya ekle
+            for (let i = 0; i < files.length; i++) {
+                // Dosyanın tam yolunu koruyarak ekleyin (webkitRelativePath)
+                formData.append('files', files[i], files[i].webkitRelativePath || files[i].name);
+            }
+
+            document.getElementById('message').innerText = 'Dosyalar yükleniyor ve işleniyor... Lütfen bekleyiniz.';
+            document.getElementById('message').className = ''; // Hata sınıfını kaldır
+
+            try {
+                const response = await fetch('/upload', { // Node.js sunucusunun endpoint'i
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'Belge_Bilgileri.xlsx'; // İndirilecek dosyanın adı
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                    document.getElementById('message').innerText = 'Excel dosyası başarıyla oluşturuldu ve indirildi!';
+                    document.getElementById('message').className = '';
+                } else {
+                    const errorText = await response.text();
+                    document.getElementById('message').innerText = `Hata oluştu: ${errorText}`;
+                    document.getElementById('message').className = 'error';
+                }
+            } catch (error) {
+                console.error('Network or server error:', error);
+                document.getElementById('message').innerText = 'Sunucuya bağlanırken bir hata oluştu.';
+                document.getElementById('message').className = 'error';
+            }
+        });
+    </script>
+</body>
+</html>
