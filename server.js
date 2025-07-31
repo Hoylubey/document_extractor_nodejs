@@ -14,7 +14,6 @@ const UPLOAD_DIR = path.join(__dirname, 'uploads');
 // Multer disk storage configuration
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        // file.originalname, webkitRelativePath ile gelen tam yolu içerir (örn: 'KlasorAdi/AltKlasor/Dosya.pdf')
         const relativePath = path.dirname(file.originalname);
         const destinationPath = path.join(UPLOAD_DIR, relativePath);
         fs.ensureDirSync(destinationPath); // Klasör yoksa oluştur
@@ -33,7 +32,7 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Bilgi çekme fonksiyonları
+// Information extraction function
 async function extractInfo(filePath, originalRelativePath) {
     const docInfo = {
         'Döküman No': '',
@@ -44,37 +43,35 @@ async function extractInfo(filePath, originalRelativePath) {
         'Sorumlu Departman': ''
     };
 
-    // --- Dosya İsmi Mantığı (Geliştirilmiş) ---
-    const fullFileName = path.basename(originalRelativePath); // Örn: FR.01-BS.TL.02_0-SMS ve Maling Cevap Şablonu.pdf
-    const fileNameWithoutExt = path.parse(fullFileName).name; // Uzantısız kısım: FR.01-BS.TL.02_0-SMS ve Maling Cevap Şablonu
+    // --- Dosya İsmi Mantığı (Onay ve Hata Ayıklama Eklendi) ---
+    // DEBUGGING: Orijinal dosya adını konsola yazdır
+    console.log(`DEBUG: Original Relative Path received: ${originalRelativePath}`);
 
-    // İlk '-' işaretinden sonraki kısmı al
+    const fullFileNameWithExt = path.basename(originalRelativePath);
+    const fileNameWithoutExt = path.parse(fullFileNameWithExt).name;
+
     const firstHyphenIndex = fileNameWithoutExt.indexOf('-');
     if (firstHyphenIndex !== -1 && firstHyphenIndex < fileNameWithoutExt.length - 1) {
         docInfo['Dosya İsmi'] = fileNameWithoutExt.substring(firstHyphenIndex + 1).trim();
     } else {
-        docInfo['Dosya İsmi'] = fileNameWithoutExt.trim(); // '-' yoksa tüm uzantısız adı kullan
+        docInfo['Dosya İsmi'] = fileNameWithoutExt.trim();
     }
+    // DEBUGGING: İşlenmiş Dosya İsmini konsola yazdır
+    console.log(`DEBUG: Processed 'Dosya İsmi': ${docInfo['Dosya İsmi']}`);
 
-    // --- Sorumlu Departman Mantığı (Geliştirilmiş) ---
-    const parts = originalRelativePath.split(path.sep); // Klasör yollarını ayır
-    // path.sep, işletim sistemine göre / veya \ olur
+    // --- Sorumlu Departman Mantığı ---
+    const pathSegments = originalRelativePath.split(path.sep);
     
-    // Eğer dosya doğrudan yüklenen kök klasörde değilse (yani alt klasörlerdeyse)
-    if (parts.length > 1 && parts[0] !== fullFileName) { // Check if it's not just the file name
-        // Sorumlu Departman: Dosyanın bulunduğu klasörün adı (bir üst klasör)
-        // Eğer "KlasorAdi/AltKlasor/Dosya.pdf" ise "AltKlasor" olmalı.
-        // Eğer "KlasorAdi/Dosya.pdf" ise "KlasorAdi" olmalı.
-        const folderName = parts[parts.length - 2]; // Sondan ikinci eleman (klasör adı)
-        if (folderName) { // Eğer bir klasör adı varsa
-            docInfo['Sorumlu Departman'] = folderName;
+    if (pathSegments.length > 1) {
+        const folderNameIndex = pathSegments.length - 2;
+        if (folderNameIndex >= 0) {
+            docInfo['Sorumlu Departman'] = pathSegments[folderNameIndex];
         } else {
-            docInfo['Sorumlu Departman'] = 'Ana Klasör'; // Çoklu klasör yapısı yoksa
+            docInfo['Sorumlu Departman'] = 'Ana Klasör';
         }
     } else {
-        docInfo['Sorumlu Departman'] = 'Ana Klasör'; // Dosya direkt kök klasörde
+        docInfo['Sorumlu Departman'] = 'Ana Klasör';
     }
-
 
     let textContent = '';
     const fileExtension = path.extname(filePath).toLowerCase();
@@ -84,35 +81,36 @@ async function extractInfo(filePath, originalRelativePath) {
             const dataBuffer = fs.readFileSync(filePath);
             const data = await PdfParse(dataBuffer);
             textContent = data.text;
+            console.log(`--- PDF Metin İçeriği (${path.basename(filePath)}) ---`);
+            console.log(textContent);
+            console.log('--- Metin İçeriği Sonu ---');
         } else if (fileExtension === '.docx' || fileExtension === '.doc') {
             const result = await mammoth.extractRawText({ path: filePath });
             textContent = result.value;
         }
     } catch (e) {
         console.error(`Dosya metni okunurken hata oluştu ${filePath}:`, e);
-        return docInfo; // Hata durumunda boş bilgilerle dön
+        return docInfo;
     }
 
-    // --- Bilgi Çekme (Revizyon Tarihi dahil, regex'ler daha esnekleştirildi) ---
+    // --- Bilgi Çekme ---
     let match;
 
-    // Doküman No (Daha esnek regex: Boşluklar ve tireler için)
-    match = textContent.match(/Doküman No\s*[:\s]*([A-Z0-9.\-\s]+)/i);
+    // Doküman No (Düzeltildi: Sadece belge numarası karakterlerini yakala, boşlukları değil)
+    // Örn: TR.01.STD.001 gibi ifadeler için
+    match = textContent.match(/Doküman No\s*[:\s]*([A-Z0-9.\-]+)/i);
     if (match) docInfo['Döküman No'] = match[1].trim();
+    // DEBUGGING: Çekilen Döküman No'yu konsola yazdır
+    console.log(`DEBUG: Extracted 'Döküman No': ${docInfo['Döküman No']}`);
 
-    // Yayın Tarihi (Daha esnek regex)
     match = textContent.match(/Yayın Tarihi\s*[:\s]*(\d{2}[.\/]\d{2}[.\/]\d{4})/);
     if (match) docInfo['Tarih'] = match[1].trim();
 
-    // Revizyon No (Daha esnek regex)
     match = textContent.match(/Revizyon No\s*[:\s]*(\d+)/i);
     if (match) docInfo['Revizyon Sayısı'] = match[1].trim();
 
-    // Revizyon Tarihi (Daha esnek regex: Boşluklar, : ve farklı tarih formatları için)
-    // Örnek PDF'ten aldığımız bilgi: "Revizyon Tarihi: 30.03.2020" 
-    match = textContent.match(/Revizyon Tarihi\s*[:\s]*(\d{2}[.\/]\d{2}[.\/]\d{4})/);
+    match = textContent.match(/Revizyon Tarihi\s*[:\s]*(\d{2}[.\/]\d{2}[.\/]\d{4})/i);
     if (match) docInfo['Revizyon Tarihi'] = match[1].trim();
-    // Eğer yine gelmezse, metin içeriğini konsola yazdırıp elle kontrol etmek gerekebilir.
 
     return docInfo;
 }
@@ -126,16 +124,13 @@ app.post('/upload', upload.array('files'), async (req, res) => {
     const extractedData = [];
 
     for (const file of uploadedFiles) {
-        // originalname, webkitRelativePath'ten gelen orijinal yolu içerir (örn: 'KlasorAdi/Dosya.pdf')
-        // Bu yol, dosyanın kendi içinde bulunduğu klasör yapısını belirtir.
-        const originalRelativePath = file.originalname; 
+        const originalRelativePath = file.originalname;
         
         const data = await extractInfo(file.path, originalRelativePath);
         if (data) {
             extractedData.push(data);
         }
 
-        // Geçici dosyayı sil
         try {
             await fs.remove(file.path);
         } catch (e) {
@@ -143,9 +138,8 @@ app.post('/upload', upload.array('files'), async (req, res) => {
         }
     }
 
-    // Yüklenen tüm geçici klasörleri temizle
     try {
-        await fs.emptyDir(UPLOAD_DIR); // uploads klasörünün içini tamamen boşaltır
+        await fs.emptyDir(UPLOAD_DIR);
     } catch (e) {
         console.error(`Geçici yükleme klasörü temizlenirken hata oluştu ${UPLOAD_DIR}:`, e);
     }
@@ -154,24 +148,19 @@ app.post('/upload', upload.array('files'), async (req, res) => {
         return res.status(400).send('No PDF or Word documents found or processed.');
     }
 
-    // Excel oluştur
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Belge Bilgileri');
 
-    // Başlıkları ekle - Sorumlu Departman ve Dosya İsmi sırasını düzenledim
     const headers = ['Döküman No', 'Tarih', 'Revizyon Tarihi', 'Revizyon Sayısı', 'Sorumlu Departman', 'Dosya İsmi'];
     worksheet.addRow(headers);
 
-    // Verileri ekle
     extractedData.forEach(rowData => {
         const rowValues = headers.map(header => rowData[header] || '');
         worksheet.addRow(rowValues);
     });
 
-    // Excel dosyasını belleğe kaydet
     const buffer = await workbook.xlsx.writeBuffer();
 
-    // Kullanıcıya Excel dosyasını gönder
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename=Belge_Bilgileri.xlsx');
     res.send(buffer);
@@ -179,5 +168,5 @@ app.post('/upload', upload.array('files'), async (req, res) => {
 
 app.listen(PORT, () => {
     console.log(`Sunucu http://localhost:${PORT} adresinde çalışıyor`);
-    fs.ensureDirSync(UPLOAD_DIR); // Uygulama başlarken uploads klasörünü oluştur
+    fs.ensureDirSync(UPLOAD_DIR);
 });
