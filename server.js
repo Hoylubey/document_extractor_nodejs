@@ -50,13 +50,9 @@ async function extractInfo(filePath, originalRelativePath) {
         const lastHyphenIndex = correctedFileName.lastIndexOf('-');
 
         if (lastHyphenIndex !== -1) {
-            // Son tireye kadar olan kısmı "Döküman No" olarak ayarla
             docInfo['Döküman No'] = correctedFileName.substring(0, lastHyphenIndex).trim();
-
-            // Son tireden sonraki kısmı "Dosya İsmi" olarak ayarla
             docInfo['Dosya İsmi'] = correctedFileName.substring(lastHyphenIndex + 1).trim();
         } else {
-            // Eğer tire yoksa, dosya adının tamamını "Dosya İsmi" olarak ayarla
             docInfo['Dosya İsmi'] = correctedFileName.trim();
         }
     } catch {
@@ -110,26 +106,21 @@ app.post('/upload', upload.array('files'), async (req, res) => {
     }
 
     const extractedData = [];
+    const extractedDocumentNumbers = new Set(); // Tekrarlı döküman numaralarını kontrol etmek için bir Set
+
     for (const file of uploadedFiles) {
         const originalRelativePath = file.originalname;
         const data = await extractInfo(file.path, originalRelativePath);
-        if (data) extractedData.push(data);
 
-        try {
-            await fs.remove(file.path);
-        } catch (e) {
-            console.error(`Dosya silinirken hata oluştu ${file.path}:`, e);
+        if (data && data['Döküman No'] && !extractedDocumentNumbers.has(data['Döküman No'])) {
+            // Eğer döküman numarası varsa ve daha önce eklenmemişse
+            extractedData.push(data);
+            extractedDocumentNumbers.add(data['Döküman No']);
         }
     }
 
-    try {
-        await fs.emptyDir(UPLOAD_DIR);
-    } catch (e) {
-        console.error(`Geçici klasör temizlenirken hata oluştu ${UPLOAD_DIR}:`, e);
-    }
-
     if (extractedData.length === 0) {
-        return res.status(400).send('Hiçbir geçerli belge işlenemedi.');
+        return res.status(400).send('Hiçbir geçerli belge işlenemedi veya hepsi mükerrerdi.');
     }
 
     const workbook = new ExcelJS.Workbook();
