@@ -36,7 +36,7 @@ async function extractInfo(filePath, originalRelativePath) {
         'Döküman No': '',
         'Tarih': '',
         'Revizyon Tarihi': '',
-        'Revizyon Sayısı': '0',
+        'Revizyon Sayısı': '',
         'Dosya İsmi': '',
         'Sorumlu Departman': ''
     };
