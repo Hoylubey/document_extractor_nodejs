@@ -5,7 +5,8 @@
     "fs-extra": "^11.3.0",
     "mammoth": "^1.9.1",
     "multer": "^2.0.2",
-    "pdf-parse": "^1.1.1"
+    "pdf-parse": "^1.1.1",
+    "uuid": "^9.0.1"
   },
   "name": "document_extractor_nodejs",
   "version": "1.0.0",
@@ -18,16 +19,4 @@
   "author": "",
   "license": "ISC",
   "description": ""
-},
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "exceljs": "^4.4.0",
-    "express": "^4.18.2",
-    "fs-extra": "^11.2.0",
-    "mammoth": "^1.7.2",
-    "multer": "^1.4.5-lts.1",
-    "pdf-parse": "^1.1.1",
-    "uuid": "^9.0.1" // Bu satırı ekleyin
   }
