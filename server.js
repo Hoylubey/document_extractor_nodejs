@@ -59,7 +59,6 @@ async function extractInfo(filePath, originalRelativePath) {
         const correctedFileName = Buffer.from(fileNameWithoutExt, 'latin1').toString('utf-8');
         let tempFileName = correctedFileName;
         
-        // Revizyon sayılarını dosya adından ayır ve en büyüğünü bul
         const revNumbers = [...tempFileName.matchAll(/_(\d+)/g)]
             .map(match => parseInt(match[1]))
             .filter(num => !isNaN(num));
@@ -67,21 +66,17 @@ async function extractInfo(filePath, originalRelativePath) {
         if (revNumbers.length > 0) {
             const maxRev = Math.max(...revNumbers);
             docInfo['Revizyon Sayısı'] = maxRev.toString();
-            // Dosya adından revizyon numarasını temizle
             tempFileName = tempFileName.replace(new RegExp(`_${maxRev}`), '');
         }
 
-        // Döküman No ve Dosya İsmini ayır (Yeni Mantık)
-        const firstHyphenIndex = tempFileName.indexOf('-');
-        // Eğer tire işareti varsa, son tire işaretini baz al
+        // Döküman No ve Dosya İsmini ayır (Güncellenmiş Mantık)
         const lastHyphenIndex = tempFileName.lastIndexOf('-');
         
-        if (lastHyphenIndex !== -1) {
-            // Son tire işaretine göre ayır
+        if (lastHyphenIndex !== -1 && lastHyphenIndex > 0) { // Tire işareti varsa ve dosya adının başında değilse
             docInfo['Döküman No'] = tempFileName.substring(0, lastHyphenIndex).trim();
             docInfo['Dosya İsmi'] = tempFileName.substring(lastHyphenIndex + 1).trim();
         } else {
-            // Eğer hiç tire işareti yoksa, dosya adının tamamını Döküman No olarak kabul et
+            // Eğer hiç tire yoksa veya en başta ise, dosya adının tamamını Döküman No olarak kabul et
             docInfo['Döküman No'] = tempFileName.trim();
         }
         
@@ -93,7 +88,6 @@ async function extractInfo(filePath, originalRelativePath) {
         docInfo['Dosya İsmi'] = '';
     }
 
-    // Sorumlu Departmanı belirleme
     const pathSegments = originalRelativePath.split(/[\\/]/);
     if (pathSegments.length > 1) {
         const folderNameIndex = pathSegments.length - 2;
@@ -102,7 +96,6 @@ async function extractInfo(filePath, originalRelativePath) {
         docInfo['Sorumlu Departman'] = 'Ana Klasör';
     }
 
-    // Dosya içeriğinden tarihleri çekme
     let textContent = '';
     const fileExtension = path.extname(filePath).toLowerCase();
     try {
@@ -130,7 +123,6 @@ async function extractInfo(filePath, originalRelativePath) {
     return docInfo;
 }
 
-// Yükleme ve işleme rotası
 app.post('/upload', upload.array('files'), async (req, res) => {
     try {
         const uploadedFiles = req.files;
