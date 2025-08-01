@@ -36,7 +36,7 @@ async function extractInfo(filePath, originalRelativePath) {
         'Döküman No': '',
         'Tarih': '',
         'Revizyon Tarihi': '',
-        'Revizyon Sayısı': '0',
+        'Revizyon Sayısı': '0', // Varsayılan değer 0
         'Dosya İsmi': '',
         'Sorumlu Departman': ''
     };
@@ -49,36 +49,32 @@ async function extractInfo(filePath, originalRelativePath) {
         const correctedFileName = Buffer.from(fileNameWithoutExt, 'latin1').toString('utf-8');
         let processedFileName = correctedFileName;
 
-        // Revizyon sayısını dosya adından çekme ve dosya adından bu kısmı silme
+        // 1. Revizyon sayısını ayır (alt tireden sonra gelen sayı)
         const lastUnderscoreIndex = correctedFileName.lastIndexOf('_');
         if (lastUnderscoreIndex !== -1 && lastUnderscoreIndex < correctedFileName.length - 1) {
             const revisionPart = correctedFileName.substring(lastUnderscoreIndex + 1);
-            if (!isNaN(revisionPart)) {
+            if (!isNaN(revisionPart)) { // Sayı olup olmadığını kontrol et
                 docInfo['Revizyon Sayısı'] = revisionPart.trim();
-                processedFileName = correctedFileName.substring(0, lastUnderscoreIndex);
+                processedFileName = correctedFileName.substring(0, lastUnderscoreIndex); // Alt tire ve sonrasını dosya adından sil
             }
         }
         
-        // Döküman No'dan alt tire ve sonrasını temizleme
-        const lastCleanUnderscoreIndex = processedFileName.lastIndexOf('_');
-        if (lastCleanUnderscoreIndex !== -1) {
-            processedFileName = processedFileName.substring(0, lastCleanUnderscoreIndex);
-        }
-
-        // Dosya ismini belirleme (yeni mantık)
+        // 2. Dosya ismini ve Döküman No'yu ayır (en az 3 harf kuralı)
         const match = processedFileName.match(/[a-zA-Z]{3,}/);
         if (match) {
             const index = processedFileName.indexOf(match[0]);
             docInfo['Dosya İsmi'] = processedFileName.substring(index).trim();
             docInfo['Döküman No'] = processedFileName.substring(0, index).trim();
         } else {
-            // Eğer en az 3 harf yan yana yoksa, dosya adının tamamı Döküman No olsun
+            // Eğer en az 3 harf yan yana yoksa
             docInfo['Döküman No'] = processedFileName.trim();
             docInfo['Dosya İsmi'] = '';
         }
 
     } catch {
-        docInfo['Dosya İsmi'] = fileNameWithoutExt.trim();
+        // Hata durumunda dosya adının tamamı Döküman No olsun
+        docInfo['Döküman No'] = fileNameWithoutExt.trim();
+        docInfo['Dosya İsmi'] = '';
     }
 
     // Sorumlu Departmanı belirleme (önceki mantık aynı)
@@ -107,16 +103,16 @@ async function extractInfo(filePath, originalRelativePath) {
         return docInfo;
     }
 
-    let match;
-    match = textContent.match(/Yayın Tarihi\s*[:\s]*(\d{2}[.\/]\d{2}[.\/]\d{4})/);
-    if (match) docInfo['Tarih'] = match[1].trim();
-    match = textContent.match(/Revizyon Tarihi\s*[:\s]*(\d{2}[.\/]\d{2}[.\/]\d{4})/i);
-    if (match) docInfo['Revizyon Tarihi'] = match[1].trim();
+    let matchFromText;
+    matchFromText = textContent.match(/Yayın Tarihi\s*[:\s]*(\d{2}[.\/]\d{2}[.\/]\d{4})/);
+    if (matchFromText) docInfo['Tarih'] = matchFromText[1].trim();
+    matchFromText = textContent.match(/Revizyon Tarihi\s*[:\s]*(\d{2}[.\/]\d{2}[.\/]\d{4})/i);
+    if (matchFromText) docInfo['Revizyon Tarihi'] = matchFromText[1].trim();
 
     return docInfo;
 }
 
-// Yükleme ve işleme rotası
+// Yükleme ve işleme rotası (önceki mantık aynı)
 app.post('/upload', upload.array('files'), async (req, res) => {
     const uploadedFiles = req.files;
     if (!uploadedFiles || uploadedFiles.length === 0) {
