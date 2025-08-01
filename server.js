@@ -5,10 +5,15 @@ const fs = require('fs-extra');
 const PdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
 const ExcelJS = require('exceljs');
+const cors = require('cors'); // CORS kütüphanesi eklendi
+const pLimit = require('p-limit'); // p-limit kütüphanesi eklendi
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
+
+// CORS ayarı: Tüm kaynaklardan gelen isteklere izin ver
+app.use(cors());
 
 // Multer disk storage configuration
 const storage = multer.diskStorage({
@@ -45,12 +50,8 @@ async function extractInfo(filePath, originalRelativePath) {
     const fileNameWithoutExt = path.parse(fullFileNameWithExt).name;
 
     try {
-        // Türkçe karakter bozulmalarını düzelt
         const correctedFileName = Buffer.from(fileNameWithoutExt, 'latin1').toString('utf-8');
-        const firstHyphenIndex = correctedFileName;
-        docInfo['Dosya İsmi'] = firstHyphenIndex !== -1 && firstHyphenIndex < correctedFileName.length - 1
-            ? correctedFileName.substring(firstHyphenIndex + 1).trim()
-            : correctedFileName.trim();
+        docInfo['Dosya İsmi'] = correctedFileName.trim();
     } catch {
         docInfo['Dosya İsmi'] = fileNameWithoutExt.trim();
     }
@@ -104,17 +105,25 @@ app.post('/upload', upload.array('files'), async (req, res) => {
     }
 
     const extractedData = [];
-    for (const file of uploadedFiles) {
-        const originalRelativePath = file.originalname;
-        const data = await extractInfo(file.path, originalRelativePath);
-        if (data) extractedData.push(data);
+    
+    // Eşzamanlı işleme limitini 10 olarak ayarla
+    const limit = pLimit(10); 
 
-        try {
-            await fs.remove(file.path);
-        } catch (e) {
-            console.error(`Dosya silinirken hata oluştu ${file.path}:`, e);
-        }
-    }
+    // Tüm dosyaları paralel olarak, ancak en fazla 10 tanesi aynı anda işleme
+    const tasks = uploadedFiles.map(file => 
+        limit(async () => {
+            const originalRelativePath = file.originalname;
+            const data = await extractInfo(file.path, originalRelativePath);
+            if (data) extractedData.push(data);
+            try {
+                await fs.remove(file.path);
+            } catch (e) {
+                console.error(`Dosya silinirken hata oluştu ${file.path}:`, e);
+            }
+        })
+    );
+
+    await Promise.all(tasks);
 
     try {
         await fs.emptyDir(UPLOAD_DIR);
