@@ -34,9 +34,9 @@ app.get('/', (req, res) => {
 async function extractInfo(filePath, originalRelativePath) {
     const docInfo = {
         'Döküman No': '',
-        'Yayın Tarihi': '',
+        'Tarih': '',
         'Revizyon Tarihi': '',
-        'Revizyon Sayısı': '0', // Alt tireden sayı çekilemezse varsayılan değer 0
+        'Revizyon Sayısı': '0',
         'Dosya İsmi': '',
         'Sorumlu Departman': ''
     };
@@ -47,33 +47,41 @@ async function extractInfo(filePath, originalRelativePath) {
     // Dosya adını işle
     try {
         const correctedFileName = Buffer.from(fileNameWithoutExt, 'latin1').toString('utf-8');
-        const lastHyphenIndex = correctedFileName.lastIndexOf('-');
-        const lastUnderscoreIndex = correctedFileName.lastIndexOf('_');
-        
-        let fileNameForRevNo = correctedFileName;
+        let processedFileName = correctedFileName;
 
-        // Dosya isminden önce revizyon numarasını ayır
+        // Revizyon sayısını dosya adından çekme ve dosya adından bu kısmı silme
+        const lastUnderscoreIndex = correctedFileName.lastIndexOf('_');
         if (lastUnderscoreIndex !== -1 && lastUnderscoreIndex < correctedFileName.length - 1) {
             const revisionPart = correctedFileName.substring(lastUnderscoreIndex + 1);
-            if (!isNaN(revisionPart)) { // Gelen değerin sayı olup olmadığını kontrol et
+            if (!isNaN(revisionPart)) {
                 docInfo['Revizyon Sayısı'] = revisionPart.trim();
-                fileNameForRevNo = correctedFileName.substring(0, lastUnderscoreIndex); // Revizyon sayısı olmayan dosya adı
+                processedFileName = correctedFileName.substring(0, lastUnderscoreIndex);
             }
         }
         
-        // Döküman No ve Dosya İsmini ayır
-        const effectiveHyphenIndex = fileNameForRevNo.lastIndexOf('-');
-        if (effectiveHyphenIndex !== -1) {
-            docInfo['Döküman No'] = fileNameForRevNo.substring(0, effectiveHyphenIndex).trim();
-            docInfo['Dosya İsmi'] = fileNameForRevNo.substring(effectiveHyphenIndex + 1).trim();
+        // Döküman No'dan alt tire ve sonrasını temizleme
+        const lastCleanUnderscoreIndex = processedFileName.lastIndexOf('_');
+        if (lastCleanUnderscoreIndex !== -1) {
+            processedFileName = processedFileName.substring(0, lastCleanUnderscoreIndex);
+        }
+
+        // Dosya ismini belirleme (yeni mantık)
+        const match = processedFileName.match(/[a-zA-Z]{3,}/);
+        if (match) {
+            const index = processedFileName.indexOf(match[0]);
+            docInfo['Dosya İsmi'] = processedFileName.substring(index).trim();
+            docInfo['Döküman No'] = processedFileName.substring(0, index).trim();
         } else {
-            docInfo['Dosya İsmi'] = fileNameForRevNo.trim();
+            // Eğer en az 3 harf yan yana yoksa, dosya adının tamamı Döküman No olsun
+            docInfo['Döküman No'] = processedFileName.trim();
+            docInfo['Dosya İsmi'] = '';
         }
 
     } catch {
         docInfo['Dosya İsmi'] = fileNameWithoutExt.trim();
     }
 
+    // Sorumlu Departmanı belirleme (önceki mantık aynı)
     const pathSegments = originalRelativePath.split(/[\\/]/);
     if (pathSegments.length > 1) {
         const folderNameIndex = pathSegments.length - 2;
@@ -82,9 +90,9 @@ async function extractInfo(filePath, originalRelativePath) {
         docInfo['Sorumlu Departman'] = 'Ana Klasör';
     }
 
+    // Dosya içeriğinden tarihleri çekme
     let textContent = '';
     const fileExtension = path.extname(filePath).toLowerCase();
-
     try {
         if (fileExtension === '.pdf') {
             const dataBuffer = fs.readFileSync(filePath);
@@ -100,10 +108,8 @@ async function extractInfo(filePath, originalRelativePath) {
     }
 
     let match;
-
     match = textContent.match(/Yayın Tarihi\s*[:\s]*(\d{2}[.\/]\d{2}[.\/]\d{4})/);
-    if (match) docInfo['Yayın Tarihi'] = match[1].trim();
-
+    if (match) docInfo['Tarih'] = match[1].trim();
     match = textContent.match(/Revizyon Tarihi\s*[:\s]*(\d{2}[.\/]\d{2}[.\/]\d{4})/i);
     if (match) docInfo['Revizyon Tarihi'] = match[1].trim();
 
@@ -116,37 +122,28 @@ app.post('/upload', upload.array('files'), async (req, res) => {
     if (!uploadedFiles || uploadedFiles.length === 0) {
         return res.status(400).send('Dosya yüklenmedi veya klasör seçilmedi.');
     }
-
     const extractedData = [];
-    const extractedDocumentNumbers = new Set(); 
-
+    const extractedDocumentNumbers = new Set();
     for (const file of uploadedFiles) {
         const originalRelativePath = file.originalname;
         const data = await extractInfo(file.path, originalRelativePath);
-
         if (data && data['Döküman No'] && !extractedDocumentNumbers.has(data['Döküman No'])) {
             extractedData.push(data);
             extractedDocumentNumbers.add(data['Döküman No']);
         }
     }
-
     if (extractedData.length === 0) {
         return res.status(400).send('Hiçbir geçerli belge işlenemedi veya hepsi mükerrerdi.');
     }
-
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Belge Bilgileri');
-
-    const headers = ['Döküman No', 'Yayın Tarihi', 'Revizyon Tarihi', 'Revizyon Sayısı', 'Sorumlu Departman', 'Dosya İsmi'];
+    const headers = ['Döküman No', 'Tarih', 'Revizyon Tarihi', 'Revizyon Sayısı', 'Sorumlu Departman', 'Dosya İsmi'];
     worksheet.addRow(headers);
-
     extractedData.forEach(rowData => {
         const rowValues = headers.map(header => rowData[header] || '');
         worksheet.addRow(rowValues);
     });
-
     const buffer = await workbook.xlsx.writeBuffer();
-
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename=Belge_Bilgileri.xlsx');
     res.send(buffer);
