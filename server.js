@@ -36,7 +36,7 @@ async function extractInfo(filePath, originalRelativePath) {
         'Döküman No': '',
         'Tarih': '',
         'Revizyon Tarihi': '',
-        'Revizyon Sayısı': '',
+        'Revizyon Sayısı': '0', // Varsayılan değer 0
         'Dosya İsmi': '',
         'Sorumlu Departman': ''
     };
@@ -44,36 +44,43 @@ async function extractInfo(filePath, originalRelativePath) {
     const fullFileNameWithExt = path.basename(originalRelativePath);
     const fileNameWithoutExt = path.parse(fullFileNameWithExt).name;
 
+    // Dosya adını işle
     try {
         const correctedFileName = Buffer.from(fileNameWithoutExt, 'latin1').toString('utf-8');
         let tempDocNo = correctedFileName;
         let tempDosyaIsmi = '';
 
-        // Revizyon sayısını ayır
-        const revMatch = tempDocNo.match(/_(\d+)(?=[^0-9_]*$)/);
-        if (revMatch) {
-            docInfo['Revizyon Sayısı'] = revMatch[1];
-            tempDocNo = tempDocNo.substring(0, revMatch.index);
+        // Revizyon sayılarını dosya adından ayır ve en büyüğünü bul
+        const revNumbers = [...tempDocNo.matchAll(/_(\d+)/g)]
+            .map(match => parseInt(match[1]))
+            .filter(num => !isNaN(num));
+
+        if (revNumbers.length > 0) {
+            const maxRev = Math.max(...revNumbers);
+            docInfo['Revizyon Sayısı'] = maxRev.toString();
+            // Dosya adını revizyon numarasından temizle
+            tempDocNo = tempDocNo.replace(new RegExp(`_${maxRev}$`), '');
         }
 
-        // Dosya ismini ve Döküman No'yu ayır
+        // Dosya İsmini ayır (son - çizgisinden sonraki en az 3 harfli kısım)
         const lastHyphenIndex = tempDocNo.lastIndexOf('-');
         if (lastHyphenIndex !== -1) {
             const potentialDosyaIsmi = tempDocNo.substring(lastHyphenIndex + 1).trim();
+            // Dosya ismi en az 3 harften oluşuyorsa
             if (/[a-zA-Z]{3,}/.test(potentialDosyaIsmi)) {
                 tempDosyaIsmi = potentialDosyaIsmi;
                 tempDocNo = tempDocNo.substring(0, lastHyphenIndex);
             }
         }
-
-        // Döküman No'dan alt tire ve sonrasındaki sayıları sil
+        
+        // Döküman No'daki kalan alt tireden sonraki kısmı sil
         const lastUnderscoreIndex = tempDocNo.lastIndexOf('_');
-        if (lastUnderscoreIndex !== -1 && !isNaN(tempDocNo.substring(lastUnderscoreIndex + 1))) {
-             tempDocNo = tempDocNo.substring(0, lastUnderscoreIndex);
+        if (lastUnderscoreIndex !== -1) {
+            tempDocNo = tempDocNo.substring(0, lastUnderscoreIndex);
         }
 
         docInfo['Döküman No'] = tempDocNo.trim();
-        docInfo['Dosya İsmi'] = tempDosyaIsmi || tempDocNo.trim();
+        docInfo['Dosya İsmi'] = tempDosyaIsmi.trim();
         
     } catch (e) {
         console.error("Dosya adı işlenirken hata oluştu:", e);
@@ -81,6 +88,7 @@ async function extractInfo(filePath, originalRelativePath) {
         docInfo['Dosya İsmi'] = '';
     }
 
+    // Sorumlu Departmanı belirleme (önceki mantık aynı)
     const pathSegments = originalRelativePath.split(/[\\/]/);
     if (pathSegments.length > 1) {
         const folderNameIndex = pathSegments.length - 2;
@@ -89,6 +97,7 @@ async function extractInfo(filePath, originalRelativePath) {
         docInfo['Sorumlu Departman'] = 'Ana Klasör';
     }
 
+    // Dosya içeriğinden tarihleri çekme
     let textContent = '';
     const fileExtension = path.extname(filePath).toLowerCase();
     try {
