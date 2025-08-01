@@ -5,6 +5,7 @@ const fs = require('fs-extra');
 const PdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
 const ExcelJS = require('exceljs');
+const { v4: uuidv4 } = require('uuid'); // Benzersiz dosya adları için
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,12 +14,18 @@ const UPLOAD_DIR = path.join(__dirname, 'uploads');
 // Multer disk storage configuration
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        fs.ensureDirSync(UPLOAD_DIR);
-        cb(null, UPLOAD_DIR); // Tüm dosyaları tek bir klasöre kaydet
+        fs.ensureDir(UPLOAD_DIR, (err) => {
+            if (err) {
+                console.error("Yükleme klasörü oluşturulurken hata:", err);
+                return cb(err);
+            }
+            cb(null, UPLOAD_DIR);
+        });
     },
     filename: (req, file, cb) => {
-        // Dosya adı uzunluğunu kontrol etmeye gerek kalmadı
-        cb(null, path.basename(file.originalname));
+        // Benzersiz ve kısa bir dosya adı oluştur
+        const uniqueName = `${uuidv4()}${path.extname(file.originalname)}`;
+        cb(null, uniqueName);
     }
 });
 const upload = multer({ storage: storage });
@@ -43,7 +50,6 @@ async function extractInfo(filePath, originalRelativePath) {
     const fullFileNameWithExt = path.basename(originalRelativePath);
     const fileNameWithoutExt = path.parse(fullFileNameWithExt).name;
 
-    // Dosya adını işle
     try {
         const correctedFileName = Buffer.from(fileNameWithoutExt, 'latin1').toString('utf-8');
         let tempFileName = correctedFileName;
@@ -66,7 +72,6 @@ async function extractInfo(filePath, originalRelativePath) {
             docInfo['Döküman No'] = tempFileName.substring(0, firstHyphenIndex).trim();
             docInfo['Dosya İsmi'] = tempFileName.substring(firstHyphenIndex + 1).trim();
         } else {
-            // Eğer tire işareti yoksa, dosya adının tamamını Döküman No olarak kabul et
             docInfo['Döküman No'] = tempFileName.trim();
         }
         
@@ -127,7 +132,11 @@ app.post('/upload', upload.array('files'), async (req, res) => {
             extractedDocumentNumbers.add(data['Döküman No']);
         }
         // Dosya işlendikten sonra sil
-        fs.unlinkSync(file.path);
+        try {
+            fs.unlinkSync(file.path);
+        } catch (e) {
+            console.error(`Dosya silinirken hata oluştu: ${file.path}`, e);
+        }
     }
     if (extractedData.length === 0) {
         return res.status(400).send('Hiçbir geçerli belge işlenemedi veya hepsi mükerrerdi.');
