@@ -47,7 +47,7 @@ async function extractInfo(filePath, originalRelativePath) {
     try {
         // Türkçe karakter bozulmalarını düzelt
         const correctedFileName = Buffer.from(fileNameWithoutExt, 'latin1').toString('utf-8');
-        const firstHyphenIndex = correctedFileName.indexOf('-');
+        const firstHyphenIndex = correctedFileName.indexOf('');
         docInfo['Dosya İsmi'] = firstHyphenIndex !== -1 && firstHyphenIndex < correctedFileName.length - 1
             ? correctedFileName.substring(firstHyphenIndex + 1).trim()
             : correctedFileName.trim();
