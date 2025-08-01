@@ -13,22 +13,12 @@ const UPLOAD_DIR = path.join(__dirname, 'uploads');
 // Multer disk storage configuration
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        const relativePath = path.dirname(file.originalname);
-        const destinationPath = path.join(UPLOAD_DIR, relativePath);
-        fs.ensureDirSync(destinationPath);
-        cb(null, destinationPath);
+        fs.ensureDirSync(UPLOAD_DIR);
+        cb(null, UPLOAD_DIR); // Tüm dosyaları tek bir klasöre kaydet
     },
     filename: (req, file, cb) => {
-        const originalName = path.basename(file.originalname, path.extname(file.originalname));
-        const fileExt = path.extname(file.originalname);
-        let safeFileName = originalName;
-
-        // Dosya adı 200 karakterden uzunsa kısalt
-        if (safeFileName.length > 200) {
-            safeFileName = safeFileName.substring(0, 200);
-        }
-
-        cb(null, `${safeFileName}${fileExt}`);
+        // Dosya adı uzunluğunu kontrol etmeye gerek kalmadı
+        cb(null, path.basename(file.originalname));
     }
 });
 const upload = multer({ storage: storage });
@@ -45,7 +35,7 @@ async function extractInfo(filePath, originalRelativePath) {
         'Döküman No': '',
         'Tarih': '',
         'Revizyon Tarihi': '',
-        'Revizyon Sayısı': '0', // Varsayılan değer 0
+        'Revizyon Sayısı': '0',
         'Dosya İsmi': '',
         'Sorumlu Departman': ''
     };
@@ -86,7 +76,7 @@ async function extractInfo(filePath, originalRelativePath) {
         docInfo['Dosya İsmi'] = '';
     }
 
-    // Sorumlu Departmanı belirleme (önceki mantık aynı)
+    // Sorumlu Departmanı belirleme
     const pathSegments = originalRelativePath.split(/[\\/]/);
     if (pathSegments.length > 1) {
         const folderNameIndex = pathSegments.length - 2;
@@ -121,7 +111,7 @@ async function extractInfo(filePath, originalRelativePath) {
     return docInfo;
 }
 
-// Yükleme ve işleme rotası (önceki mantık aynı)
+// Yükleme ve işleme rotası
 app.post('/upload', upload.array('files'), async (req, res) => {
     const uploadedFiles = req.files;
     if (!uploadedFiles || uploadedFiles.length === 0) {
@@ -136,6 +126,8 @@ app.post('/upload', upload.array('files'), async (req, res) => {
             extractedData.push(data);
             extractedDocumentNumbers.add(data['Döküman No']);
         }
+        // Dosya işlendikten sonra sil
+        fs.unlinkSync(file.path);
     }
     if (extractedData.length === 0) {
         return res.status(400).send('Hiçbir geçerli belge işlenemedi veya hepsi mükerrerdi.');
