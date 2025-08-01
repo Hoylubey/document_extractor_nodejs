@@ -49,30 +49,30 @@ async function extractInfo(filePath, originalRelativePath) {
         const correctedFileName = Buffer.from(fileNameWithoutExt, 'latin1').toString('utf-8');
         let processedFileName = correctedFileName;
 
-        // Revizyon sayısını dosya adının sonundaki alt tireden ayır
-        const lastUnderscoreIndex = correctedFileName.lastIndexOf('_');
-        if (lastUnderscoreIndex !== -1 && lastUnderscoreIndex < correctedFileName.length - 1) {
-            const potentialRevisionPart = correctedFileName.substring(lastUnderscoreIndex + 1);
-            if (!isNaN(potentialRevisionPart)) {
-                docInfo['Revizyon Sayısı'] = potentialRevisionPart.trim();
-                processedFileName = correctedFileName.substring(0, lastUnderscoreIndex); // Revizyon kısmını temizle
-            }
+        // Dosya adında Revizyon Sayısı'nı kontrol et
+        const revRegex = /_(\d+)$/;
+        const revMatch = processedFileName.match(revRegex);
+
+        if (revMatch) {
+            docInfo['Revizyon Sayısı'] = revMatch[1];
+            processedFileName = processedFileName.substring(0, revMatch.index);
         }
-        
-        // Yan yana en az 3 harf varsa Dosya İsmi ve Döküman No'yu ayır
-        const match = processedFileName.match(/[a-zA-Z]{3,}/);
-        if (match) {
-            const index = processedFileName.indexOf(match[0]);
+
+        // Döküman No ve Dosya İsmini ayır
+        const docNameRegex = /([a-zA-Z]{3,}.*)/;
+        const docNameMatch = processedFileName.match(docNameRegex);
+
+        if (docNameMatch) {
+            const index = processedFileName.indexOf(docNameMatch[1]);
             docInfo['Dosya İsmi'] = processedFileName.substring(index).trim();
             docInfo['Döküman No'] = processedFileName.substring(0, index).trim();
         } else {
-            // 3 harf yoksa dosya adının tamamı Döküman No'dur
             docInfo['Döküman No'] = processedFileName.trim();
             docInfo['Dosya İsmi'] = '';
         }
 
-    } catch {
-        // Hata durumunda varsayılan atama
+    } catch (e) {
+        console.error("Dosya adı işlenirken hata oluştu:", e);
         docInfo['Döküman No'] = fileNameWithoutExt.trim();
         docInfo['Dosya İsmi'] = '';
     }
