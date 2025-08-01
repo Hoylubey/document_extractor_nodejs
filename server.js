@@ -49,30 +49,30 @@ async function extractInfo(filePath, originalRelativePath) {
         const correctedFileName = Buffer.from(fileNameWithoutExt, 'latin1').toString('utf-8');
         let processedFileName = correctedFileName;
 
-        // 1. Revizyon sayısını ayır (alt tireden sonra gelen sayı)
+        // Revizyon sayısını dosya adının sonundaki alt tireden ayır
         const lastUnderscoreIndex = correctedFileName.lastIndexOf('_');
         if (lastUnderscoreIndex !== -1 && lastUnderscoreIndex < correctedFileName.length - 1) {
-            const revisionPart = correctedFileName.substring(lastUnderscoreIndex + 1);
-            if (!isNaN(revisionPart)) { // Sayı olup olmadığını kontrol et
-                docInfo['Revizyon Sayısı'] = revisionPart.trim();
-                processedFileName = correctedFileName.substring(0, lastUnderscoreIndex); // Alt tire ve sonrasını dosya adından sil
+            const potentialRevisionPart = correctedFileName.substring(lastUnderscoreIndex + 1);
+            if (!isNaN(potentialRevisionPart)) {
+                docInfo['Revizyon Sayısı'] = potentialRevisionPart.trim();
+                processedFileName = correctedFileName.substring(0, lastUnderscoreIndex); // Revizyon kısmını temizle
             }
         }
         
-        // 2. Dosya ismini ve Döküman No'yu ayır (en az 3 harf kuralı)
+        // Yan yana en az 3 harf varsa Dosya İsmi ve Döküman No'yu ayır
         const match = processedFileName.match(/[a-zA-Z]{3,}/);
         if (match) {
             const index = processedFileName.indexOf(match[0]);
             docInfo['Dosya İsmi'] = processedFileName.substring(index).trim();
             docInfo['Döküman No'] = processedFileName.substring(0, index).trim();
         } else {
-            // Eğer en az 3 harf yan yana yoksa
+            // 3 harf yoksa dosya adının tamamı Döküman No'dur
             docInfo['Döküman No'] = processedFileName.trim();
             docInfo['Dosya İsmi'] = '';
         }
 
     } catch {
-        // Hata durumunda dosya adının tamamı Döküman No olsun
+        // Hata durumunda varsayılan atama
         docInfo['Döküman No'] = fileNameWithoutExt.trim();
         docInfo['Dosya İsmi'] = '';
     }
