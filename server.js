@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 
 // Multer disk storage configuration
-const storage = multer.diskaho({
+const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         const relativePath = path.dirname(file.originalname);
         const destinationPath = path.join(UPLOAD_DIR, relativePath);
