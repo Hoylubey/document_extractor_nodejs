@@ -5,13 +5,12 @@ const fs = require('fs-extra');
 const PdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
 const ExcelJS = require('exceljs');
-const { v4: uuidv4 } = require('uuid'); // Benzersiz dosya adları için
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 
-// Multer disk storage configuration
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         fs.ensureDir(UPLOAD_DIR, (err) => {
@@ -68,15 +67,21 @@ async function extractInfo(filePath, originalRelativePath) {
         if (revNumbers.length > 0) {
             const maxRev = Math.max(...revNumbers);
             docInfo['Revizyon Sayısı'] = maxRev.toString();
+            // Dosya adından revizyon numarasını temizle
             tempFileName = tempFileName.replace(new RegExp(`_${maxRev}`), '');
         }
 
-        // Döküman No ve Dosya İsmini ayır
+        // Döküman No ve Dosya İsmini ayır (Yeni Mantık)
         const firstHyphenIndex = tempFileName.indexOf('-');
-        if (firstHyphenIndex !== -1) {
-            docInfo['Döküman No'] = tempFileName.substring(0, firstHyphenIndex).trim();
-            docInfo['Dosya İsmi'] = tempFileName.substring(firstHyphenIndex + 1).trim();
+        // Eğer tire işareti varsa, son tire işaretini baz al
+        const lastHyphenIndex = tempFileName.lastIndexOf('-');
+        
+        if (lastHyphenIndex !== -1) {
+            // Son tire işaretine göre ayır
+            docInfo['Döküman No'] = tempFileName.substring(0, lastHyphenIndex).trim();
+            docInfo['Dosya İsmi'] = tempFileName.substring(lastHyphenIndex + 1).trim();
         } else {
+            // Eğer hiç tire işareti yoksa, dosya adının tamamını Döküman No olarak kabul et
             docInfo['Döküman No'] = tempFileName.trim();
         }
         
@@ -142,7 +147,6 @@ app.post('/upload', upload.array('files'), async (req, res) => {
                 extractedData.push(data);
                 extractedDocumentNumbers.add(data['Döküman No']);
             }
-            // Dosya işlendikten sonra sil
             try {
                 fs.unlinkSync(file.path);
                 console.log(`LOG: Dosya başarıyla silindi: ${file.path}`);
