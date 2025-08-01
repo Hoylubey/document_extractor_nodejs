@@ -19,7 +19,16 @@ const storage = multer.diskStorage({
         cb(null, destinationPath);
     },
     filename: (req, file, cb) => {
-        cb(null, path.basename(file.originalname));
+        const originalName = path.basename(file.originalname, path.extname(file.originalname));
+        const fileExt = path.extname(file.originalname);
+        let safeFileName = originalName;
+
+        // Dosya adı 200 karakterden uzunsa kısalt
+        if (safeFileName.length > 200) {
+            safeFileName = safeFileName.substring(0, 200);
+        }
+
+        cb(null, `${safeFileName}${fileExt}`);
     }
 });
 const upload = multer({ storage: storage });
@@ -47,40 +56,29 @@ async function extractInfo(filePath, originalRelativePath) {
     // Dosya adını işle
     try {
         const correctedFileName = Buffer.from(fileNameWithoutExt, 'latin1').toString('utf-8');
-        let tempDocNo = correctedFileName;
-        let tempDosyaIsmi = '';
-
+        let tempFileName = correctedFileName;
+        
         // Revizyon sayılarını dosya adından ayır ve en büyüğünü bul
-        const revNumbers = [...tempDocNo.matchAll(/_(\d+)/g)]
+        const revNumbers = [...tempFileName.matchAll(/_(\d+)/g)]
             .map(match => parseInt(match[1]))
             .filter(num => !isNaN(num));
 
         if (revNumbers.length > 0) {
             const maxRev = Math.max(...revNumbers);
             docInfo['Revizyon Sayısı'] = maxRev.toString();
-            // Dosya adını revizyon numarasından temizle
-            tempDocNo = tempDocNo.replace(new RegExp(`_${maxRev}$`), '');
+            // Dosya adından revizyon numarasını temizle
+            tempFileName = tempFileName.replace(new RegExp(`_${maxRev}`), '');
         }
 
-        // Dosya İsmini ayır (son - çizgisinden sonraki en az 3 harfli kısım)
-        const lastHyphenIndex = tempDocNo.lastIndexOf('-');
-        if (lastHyphenIndex !== -1) {
-            const potentialDosyaIsmi = tempDocNo.substring(lastHyphenIndex + 1).trim();
-            // Dosya ismi en az 3 harften oluşuyorsa
-            if (/[a-zA-Z]{3,}/.test(potentialDosyaIsmi)) {
-                tempDosyaIsmi = potentialDosyaIsmi;
-                tempDocNo = tempDocNo.substring(0, lastHyphenIndex);
-            }
+        // Döküman No ve Dosya İsmini ayır
+        const firstHyphenIndex = tempFileName.indexOf('-');
+        if (firstHyphenIndex !== -1) {
+            docInfo['Döküman No'] = tempFileName.substring(0, firstHyphenIndex).trim();
+            docInfo['Dosya İsmi'] = tempFileName.substring(firstHyphenIndex + 1).trim();
+        } else {
+            // Eğer tire işareti yoksa, dosya adının tamamını Döküman No olarak kabul et
+            docInfo['Döküman No'] = tempFileName.trim();
         }
-        
-        // Döküman No'daki kalan alt tireden sonraki kısmı sil
-        const lastUnderscoreIndex = tempDocNo.lastIndexOf('_');
-        if (lastUnderscoreIndex !== -1) {
-            tempDocNo = tempDocNo.substring(0, lastUnderscoreIndex);
-        }
-
-        docInfo['Döküman No'] = tempDocNo.trim();
-        docInfo['Dosya İsmi'] = tempDosyaIsmi.trim();
         
     } catch (e) {
         console.error("Dosya adı işlenirken hata oluştu:", e);
