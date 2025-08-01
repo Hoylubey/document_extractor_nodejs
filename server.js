@@ -5,15 +5,10 @@ const fs = require('fs-extra');
 const PdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
 const ExcelJS = require('exceljs');
-const cors = require('cors'); // CORS kütüphanesi eklendi
-const pLimit = require('p-limit'); // p-limit kütüphanesi eklendi
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
-
-// CORS ayarı: Tüm kaynaklardan gelen isteklere izin ver
-app.use(cors());
 
 // Multer disk storage configuration
 const storage = multer.diskStorage({
@@ -49,9 +44,21 @@ async function extractInfo(filePath, originalRelativePath) {
     const fullFileNameWithExt = path.basename(originalRelativePath);
     const fileNameWithoutExt = path.parse(fullFileNameWithExt).name;
 
+    // Dosya adını işle
     try {
         const correctedFileName = Buffer.from(fileNameWithoutExt, 'latin1').toString('utf-8');
-        docInfo['Dosya İsmi'] = correctedFileName.trim();
+        const lastHyphenIndex = correctedFileName.lastIndexOf('-');
+
+        if (lastHyphenIndex !== -1) {
+            // Son tireye kadar olan kısmı "Döküman No" olarak ayarla
+            docInfo['Döküman No'] = correctedFileName.substring(0, lastHyphenIndex).trim();
+
+            // Son tireden sonraki kısmı "Dosya İsmi" olarak ayarla
+            docInfo['Dosya İsmi'] = correctedFileName.substring(lastHyphenIndex + 1).trim();
+        } else {
+            // Eğer tire yoksa, dosya adının tamamını "Dosya İsmi" olarak ayarla
+            docInfo['Dosya İsmi'] = correctedFileName.trim();
+        }
     } catch {
         docInfo['Dosya İsmi'] = fileNameWithoutExt.trim();
     }
@@ -82,8 +89,6 @@ async function extractInfo(filePath, originalRelativePath) {
     }
 
     let match;
-    match = textContent.match(/Doküman No\s*[:\s]*([A-Z0-9.\-]+)/i);
-    if (match) docInfo['Döküman No'] = match[1].trim();
 
     match = textContent.match(/Yayın Tarihi\s*[:\s]*(\d{2}[.\/]\d{2}[.\/]\d{4})/);
     if (match) docInfo['Tarih'] = match[1].trim();
@@ -105,25 +110,17 @@ app.post('/upload', upload.array('files'), async (req, res) => {
     }
 
     const extractedData = [];
-    
-    // Eşzamanlı işleme limitini 10 olarak ayarla
-    const limit = pLimit(10); 
+    for (const file of uploadedFiles) {
+        const originalRelativePath = file.originalname;
+        const data = await extractInfo(file.path, originalRelativePath);
+        if (data) extractedData.push(data);
 
-    // Tüm dosyaları paralel olarak, ancak en fazla 10 tanesi aynı anda işleme
-    const tasks = uploadedFiles.map(file => 
-        limit(async () => {
-            const originalRelativePath = file.originalname;
-            const data = await extractInfo(file.path, originalRelativePath);
-            if (data) extractedData.push(data);
-            try {
-                await fs.remove(file.path);
-            } catch (e) {
-                console.error(`Dosya silinirken hata oluştu ${file.path}:`, e);
-            }
-        })
-    );
-
-    await Promise.all(tasks);
+        try {
+            await fs.remove(file.path);
+        } catch (e) {
+            console.error(`Dosya silinirken hata oluştu ${file.path}:`, e);
+        }
+    }
 
     try {
         await fs.emptyDir(UPLOAD_DIR);
