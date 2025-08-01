@@ -34,7 +34,7 @@ app.get('/', (req, res) => {
 async function extractInfo(filePath, originalRelativePath) {
     const docInfo = {
         'Döküman No': '',
-        'Tarih': '',
+        'Yayın Tarihi': '',
         'Revizyon Tarihi': '',
         'Revizyon Sayısı': '',
         'Dosya İsmi': '',
@@ -91,7 +91,7 @@ async function extractInfo(filePath, originalRelativePath) {
     let match;
 
     match = textContent.match(/Yayın Tarihi\s*[:\s]*(\d{2}[.\/]\d{2}[.\/]\d{4})/);
-    if (match) docInfo['Tarih'] = match[1].trim();
+    if (match) docInfo['Yayın Tarihi'] = match[1].trim();
 
     match = textContent.match(/Revizyon No\s*[:\s]*(\d+)/i);
     if (match) docInfo['Revizyon Sayısı'] = match[1].trim();
@@ -135,7 +135,7 @@ app.post('/upload', upload.array('files'), async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Belge Bilgileri');
 
-    const headers = ['Döküman No', 'Tarih', 'Revizyon Tarihi', 'Revizyon Sayısı', 'Sorumlu Departman', 'Dosya İsmi'];
+    const headers = ['Döküman No', 'Yayın Tarihi', 'Revizyon Tarihi', 'Revizyon Sayısı', 'Sorumlu Departman', 'Dosya İsmi'];
     worksheet.addRow(headers);
 
     extractedData.forEach(rowData => {
