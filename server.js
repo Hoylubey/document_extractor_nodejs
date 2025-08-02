@@ -417,7 +417,9 @@ app.post('/upload', upload.array('files'), async (req, res) => {
             return res.status(400).send('Hiçbir geçerli belge işlenemedi veya hepsi mükerrerdi.');
         }
 
-        // 1. Yeni belgelerden çıkarılan bilgileri içeren Excel dosyasını oluştur
+        const zip = new AdmZip();
+        
+        // 1. Yeni belgelerden çıkarılan bilgileri içeren Excel dosyasının buffer'ını oluştur
         const extractedDataWorkbook = new ExcelJS.Workbook();
         const extractedDataWorksheet = extractedDataWorkbook.addWorksheet('Belge Bilgileri');
         const extractedDataHeaders = ['Döküman No', 'Tarih', 'Revizyon Tarihi', 'Revizyon Sayısı', 'Sorumlu Departman', 'Döküman Adı'];
@@ -426,13 +428,16 @@ app.post('/upload', upload.array('files'), async (req, res) => {
             const rowValues = extractedDataHeaders.map(header => rowData[header] || '');
             extractedDataWorksheet.addRow(rowValues);
         });
+        const extractedDataBuffer = await extractedDataWorkbook.xlsx.writeBuffer();
+        zip.addFile('Belge_Bilgileri.xlsx', extractedDataBuffer);
 
-        // 2. Güncellenmiş ana listeyi içeren Excel dosyasını oluştur
+        // 2. Güncellenmiş ana listenin buffer'ını oluştur ve ZIP'e ekle
         const updatedMasterListBuffer = await createMasterListBuffer(updatedMasterList);
+        zip.addFile('Güncel_Doküman_Özet_Listesi.xlsx', updatedMasterListBuffer);
 
-        // 3. Hata listesini içeren Excel dosyasını oluştur
-        const mismatchWorkbook = new ExcelJS.Workbook();
+        // 3. Hata listesi varsa, onun buffer'ını oluştur ve ZIP'e ekle
         if (mismatchedData.length > 0) {
+            const mismatchWorkbook = new ExcelJS.Workbook();
             const mismatchWorksheet = mismatchWorkbook.addWorksheet('Eşleşmeyen Bilgiler');
             const mismatchHeaders = ['Döküman No', 'Hata'];
             mismatchWorksheet.addRow(mismatchHeaders);
@@ -440,40 +445,18 @@ app.post('/upload', upload.array('files'), async (req, res) => {
                 const rowValues = mismatchHeaders.map(header => rowData[header] || '');
                 mismatchWorksheet.addRow(rowValues);
             });
-        }
-        
-        // 4. Her iki dosyayı da tek bir ZIP arşivi içinde topla
-        const zip = new AdmZip();
-        const tempDirPath = path.join(__dirname, 'temp_zip_files');
-        fs.ensureDirSync(tempDirPath);
-        
-        const extractedFilePath = path.join(tempDirPath, 'Belge_Bilgileri.xlsx');
-        await extractedDataWorkbook.xlsx.writeFile(extractedFilePath);
-        zip.addLocalFile(extractedFilePath);
-
-        const updatedMasterListPath = path.join(tempDirPath, 'Güncel_Doküman_Özet_Listesi.xlsx');
-        fs.writeFileSync(updatedMasterListPath, updatedMasterListBuffer);
-        zip.addLocalFile(updatedMasterListPath);
-
-        if (mismatchedData.length > 0) {
-            const mismatchFilePath = path.join(tempDirPath, 'Eşleşmeyen_Bilgiler.xlsx');
-            await mismatchWorkbook.xlsx.writeFile(mismatchFilePath);
-            zip.addLocalFile(mismatchFilePath);
+            const mismatchBuffer = await mismatchWorkbook.xlsx.writeBuffer();
+            zip.addFile('Eşleşmeyen_Bilgiler.xlsx', mismatchBuffer);
         }
         
         const zipBuffer = zip.toBuffer();
         
-        // 5. Doğru başlıklar ile ZIP dosyasını gönder
+        // 4. Doğru başlıklar ile ZIP dosyasını gönder
         res.setHeader('Content-Type', 'application/zip');
         res.setHeader('Content-Disposition', 'attachment; filename=Raporlar.zip');
         res.end(zipBuffer);
 
         console.log("LOG: Excel dosyaları başarıyla oluşturuldu ve ZIP arşivi olarak gönderildi.");
-
-        // Oluşturulan geçici dosyaları temizle
-        fs.remove(tempDirPath, err => {
-            if (err) console.error("HATA: Geçici klasör silinirken hata oluştu:", err);
-        });
 
     } catch (error) {
         console.error("KRİTİK HATA: Yükleme rotası işlenirken genel bir hata oluştu:", error);
