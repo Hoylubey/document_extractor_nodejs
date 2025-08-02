@@ -103,7 +103,7 @@ async function parseMasterList() {
                         'Revizyon Sayısı': columns[revisionNoIndex] || '0',
                         'Revizyon Tarihi': columns[revisionDateIndex] || '',
                         'Sorumlu Departman': columns[responsibleDeptIndex] || '',
-                        'Dosya İsmi': columns[docNameIndex] || ''
+                        'Döküman Adı': columns[docNameIndex] || ''
                     };
                 }
             }
@@ -182,7 +182,7 @@ async function parseMasterList() {
                             'Revizyon Sayısı': columns[revisionNoIndex] || '0',
                             'Revizyon Tarihi': columns[revisionDateIndex] || '',
                             'Sorumlu Departman': columns[responsibleDeptIndex] || '',
-                            'Dosya İsmi': columns[docNameIndex] || ''
+                            'Döküman Adı': columns[docNameIndex] || ''
                         };
                     }
                 }
@@ -199,7 +199,7 @@ async function parseMasterList() {
 // Ana listeyi diske yazmak için yeni fonksiyon
 async function writeMasterList(updatedList, fileExtension) {
     console.log(`LOG: Güncellenmiş ana liste diske yazılıyor... Uzantı: ${fileExtension}`);
-    const headers = ['Doküman Kodu', 'Hazırlama Tarihi', 'Revizyon No', 'Revizyon Tarihi', 'Sorumlu Kısım', 'Doküman Adı'];
+    const headers = ['Doküman Kodu', 'Hazırlama Tarihi', 'Revizyon No', 'Revizyon Tarihi', 'Sorumlu Kısım', 'Döküman Adı'];
     const updatedRecords = Object.values(updatedList);
 
     if (fileExtension === 'xlsx') {
@@ -213,7 +213,7 @@ async function writeMasterList(updatedList, fileExtension) {
                 doc['Revizyon Sayısı'],
                 doc['Revizyon Tarihi'],
                 doc['Sorumlu Departman'],
-                doc['Dosya İsmi']
+                doc['Döküman Adı']
             ]);
         });
         await workbook.xlsx.writeFile(MASTER_XLSX_PATH);
@@ -227,7 +227,7 @@ async function writeMasterList(updatedList, fileExtension) {
                     `"${doc['Revizyon Sayısı']}"`,
                     `"${doc['Revizyon Tarihi']}"`,
                     `"${doc['Sorumlu Departman']}"`,
-                    `"${doc['Dosya İsmi']}"`
+                    `"${doc['Döküman Adı']}"`
                 ].join(';');
             })
         ].join('\n');
@@ -236,14 +236,13 @@ async function writeMasterList(updatedList, fileExtension) {
     console.log("LOG: Ana liste başarıyla güncellendi.");
 }
 
-
 async function extractInfo(filePath, originalRelativePath) {
     const docInfo = {
         'Döküman No': '',
         'Tarih': '',
         'Revizyon Tarihi': '',
         'Revizyon Sayısı': '0',
-        'Dosya İsmi': '',
+        'Döküman Adı': '',
         'Sorumlu Departman': ''
     };
 
@@ -269,17 +268,17 @@ async function extractInfo(filePath, originalRelativePath) {
         
         if (lastHyphenIndex !== -1 && lastHyphenIndex > 0) {
             docInfo['Döküman No'] = tempFileName.substring(0, lastHyphenIndex).trim();
-            docInfo['Dosya İsmi'] = tempFileName.substring(lastHyphenIndex + 1).trim();
+            docInfo['Döküman Adı'] = tempFileName.substring(lastHyphenIndex + 1).trim();
         } else {
             docInfo['Döküman No'] = tempFileName.trim();
         }
         
-        console.log(`LOG: Ayrıştırılan bilgiler: Döküman No: ${docInfo['Döküman No']}, Revizyon Sayısı: ${docInfo['Revizyon Sayısı']}, Dosya İsmi: ${docInfo['Dosya İsmi']}`);
+        console.log(`LOG: Ayrıştırılan bilgiler: Döküman No: ${docInfo['Döküman No']}, Revizyon Sayısı: ${docInfo['Revizyon Sayısı']}, Döküman Adı: ${docInfo['Döküman Adı']}`);
 
     } catch (e) {
         console.error("HATA: Dosya adı işlenirken hata oluştu:", e);
         docInfo['Döküman No'] = fileNameWithoutExt.trim();
-        docInfo['Dosya İsmi'] = '';
+        docInfo['Döküman Adı'] = '';
     }
 
     const pathSegments = originalRelativePath.split(/[\\/]/);
@@ -337,7 +336,6 @@ app.post('/upload', upload.array('files'), async (req, res) => {
             return res.status(500).send(`Sunucu hatası: Ana doküman listesi dosyası bulunamıyor veya okunamıyor. Hata: ${e.message}`);
         }
         
-        // Ana listenin kopyasını oluşturuyoruz, böylece değişiklikleri bu kopya üzerinde yapacağız
         const updatedMasterList = JSON.parse(JSON.stringify(masterDocumentList));
         const extractedData = [];
         const extractedDocumentNumbers = new Set();
@@ -358,22 +356,33 @@ app.post('/upload', upload.array('files'), async (req, res) => {
                     const mismatches = [];
 
                     // Revizyon Sayısı karşılaştırması ve güncellemesi
-                    if (masterDoc['Revizyon Sayısı'] !== data['Revizyon Sayısı'] && data['Revizyon Sayısı']) {
+                    if (data['Revizyon Sayısı'] && masterDoc['Revizyon Sayısı'] !== data['Revizyon Sayısı']) {
+                        console.log(`LOG: Revizyon Sayısı güncellendi: '${masterDoc['Revizyon Sayısı']}' -> '${data['Revizyon Sayısı']}'`);
                         mismatches.push(`Revizyon Sayısı: Ana Liste '${masterDoc['Revizyon Sayısı']}' vs. Belge '${data['Revizyon Sayısı']}'`);
                         updatedMasterList[data['Döküman No']]['Revizyon Sayısı'] = data['Revizyon Sayısı'];
                     }
 
                     // Revizyon Tarihi karşılaştırması ve güncellemesi
-                    if (masterDoc['Revizyon Tarihi'] !== data['Revizyon Tarihi'] && data['Revizyon Tarihi']) {
+                    if (data['Revizyon Tarihi'] && masterDoc['Revizyon Tarihi'] !== data['Revizyon Tarihi']) {
+                        console.log(`LOG: Revizyon Tarihi güncellendi: '${masterDoc['Revizyon Tarihi']}' -> '${data['Revizyon Tarihi']}'`);
                         mismatches.push(`Revizyon Tarihi: Ana Liste '${masterDoc['Revizyon Tarihi']}' vs. Belge '${data['Revizyon Tarihi']}'`);
                         updatedMasterList[data['Döküman No']]['Revizyon Tarihi'] = data['Revizyon Tarihi'];
                     }
 
                     // Hazırlama/Yayın Tarihi karşılaştırması ve güncellemesi
-                    if (masterDoc['Tarih'] !== data['Tarih'] && data['Tarih']) {
+                    if (data['Tarih'] && masterDoc['Tarih'] !== data['Tarih']) {
+                        console.log(`LOG: Hazırlama/Yayın Tarihi güncellendi: '${masterDoc['Tarih']}' -> '${data['Tarih']}'`);
                         mismatches.push(`Hazırlama/Yayın Tarihi: Ana Liste '${masterDoc['Tarih']}' vs. Belge '${data['Tarih']}'`);
                         updatedMasterList[data['Döküman No']]['Tarih'] = data['Tarih'];
                     }
+
+                    // Döküman Adı karşılaştırması ve güncellemesi
+                    if (data['Döküman Adı'] && masterDoc['Döküman Adı'] !== data['Döküman Adı']) {
+                        console.log(`LOG: Döküman Adı güncellendi: '${masterDoc['Döküman Adı']}' -> '${data['Döküman Adı']}'`);
+                        mismatches.push(`Döküman Adı: Ana Liste '${masterDoc['Döküman Adı']}' vs. Belge '${data['Döküman Adı']}'`);
+                        updatedMasterList[data['Döküman No']]['Döküman Adı'] = data['Döküman Adı'];
+                    }
+
 
                     if (mismatches.length > 0) {
                         console.log(`LOG: Belge ${data['Döküman No']} için ${mismatches.length} adet uyumsuzluk bulundu ve ana liste güncellendi.`);
@@ -409,7 +418,7 @@ app.post('/upload', upload.array('files'), async (req, res) => {
 
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Belge Bilgileri');
-        const headers = ['Döküman No', 'Tarih', 'Revizyon Tarihi', 'Revizyon Sayısı', 'Sorumlu Departman', 'Dosya İsmi'];
+        const headers = ['Döküman No', 'Tarih', 'Revizyon Tarihi', 'Revizyon Sayısı', 'Sorumlu Departman', 'Döküman Adı'];
         worksheet.addRow(headers);
         extractedData.forEach(rowData => {
             const rowValues = headers.map(header => rowData[header] || '');
