@@ -49,19 +49,15 @@ function parseCsvData(csvContent) {
             return {};
         }
 
-        let headerLine = '';
-        for(const line of lines) {
-            if (line.includes('Doküman Kodu')) {
-                headerLine = line;
-                break;
-            }
-        }
+        // Başlık satırını bulmak için "Doküman Kodu" içeren satırı arayın
+        let headerLine = lines.find(line => line.includes('Doküman Kodu'));
         
         if (!headerLine) {
-            console.error("HATA: CSV dosyasında 'Doküman Kodu' başlığı bulunamadı.");
+            console.error("HATA: CSV dosyasında 'Doküman Kodu' başlığı bulunamadı. Dosya içeriğini kontrol edin.");
             return {};
         }
 
+        // Başlıkları ayıklayın ve tırnak işaretlerini kaldırın
         const headers = headerLine.split(',').map(h => h.trim().replace(/"/g, ''));
         
         // CSV başlıklarına göre dinamik olarak indeksleri belirle
@@ -78,7 +74,8 @@ function parseCsvData(csvContent) {
         }
 
         const masterList = {};
-        const dataLines = lines.slice(lines.indexOf(headerLine) + 1);
+        const dataLinesStartIndex = lines.indexOf(headerLine) + 1;
+        const dataLines = lines.slice(dataLinesStartIndex);
 
         dataLines.forEach((line, index) => {
             try {
