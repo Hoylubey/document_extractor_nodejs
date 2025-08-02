@@ -10,7 +10,6 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
-// Dosya adını sadece "Doküman Özet Listesi.csv" olarak güncelledik.
 const MASTER_CSV_PATH = path.join(__dirname, 'Doküman Özet Listesi.csv');
 
 const storage = multer.diskStorage({
@@ -64,11 +63,14 @@ function parseCsvData(csvContent) {
         }
 
         const headers = headerLine.split(',').map(h => h.trim().replace(/"/g, ''));
+        
+        // CSV başlıklarına göre dinamik olarak indeksleri belirle
         const docCodeIndex = headers.indexOf('Doküman Kodu');
         const preparationDateIndex = headers.indexOf('Hazırlama Tarihi');
         const revisionNoIndex = headers.indexOf('Revizyon No');
         const revisionDateIndex = headers.indexOf('Revizyon Tarihi');
         const responsibleDeptIndex = headers.indexOf('Sorumlu Kısım');
+        const docNameIndex = headers.indexOf('Doküman Adı');
 
         if (docCodeIndex === -1) {
             console.error("HATA: 'Doküman Kodu' sütunu bulunamadı. Lütfen başlığı kontrol edin.");
@@ -85,11 +87,12 @@ function parseCsvData(csvContent) {
                     const docCode = columns[docCodeIndex];
                     if (docCode) {
                         masterList[docCode] = {
-                            'Döküman Kodu': docCode,
+                            'Döküman No': docCode,
                             'Tarih': columns[preparationDateIndex] || '',
                             'Revizyon Sayısı': columns[revisionNoIndex] || '0',
                             'Revizyon Tarihi': columns[revisionDateIndex] || '',
                             'Sorumlu Departman': columns[responsibleDeptIndex] || '',
+                            'Dosya İsmi': columns[docNameIndex] || ''
                         };
                     }
                 }
@@ -220,6 +223,7 @@ app.post('/upload', upload.array('files'), async (req, res) => {
                 const masterDoc = masterDocumentList[data['Döküman No']];
                 if (masterDoc) {
                     const mismatches = [];
+                    // Buradaki anahtarlar, parseCsvData fonksiyonuyla eşleşiyor
                     if (masterDoc['Revizyon Sayısı'] !== data['Revizyon Sayısı']) {
                         mismatches.push(`Revizyon Sayısı: Ana Liste '${masterDoc['Revizyon Sayısı']}' vs. Belge '${data['Revizyon Sayısı']}'`);
                     }
