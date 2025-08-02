@@ -336,48 +336,37 @@ app.post('/upload', upload.array('files'), async (req, res) => {
             console.error(`KRİTİK HATA: Ana doküman listesi dosyası okunamadı.`, e);
             masterDocumentList = {};
         }
-        
-        const updatedMasterList = JSON.parse(JSON.stringify(masterDocumentList));
-        const extractedData = [];
-        const extractedDocumentNumbers = new Set();
-        const mismatchedData = [];
 
+        // Ana listenin kopyasını oluşturuyoruz, böylece orijinal veriyi bozmadan güncelleme yapabiliriz
+        const updatedMasterList = JSON.parse(JSON.stringify(masterDocumentList));
+        
+        const extractedDocumentNumbers = new Set();
+        
+        // Yeni yüklenen dosyaları işliyoruz
         for (const file of uploadedFiles) {
             const originalRelativePath = file.originalname;
             const data = await extractInfo(file.path, originalRelativePath);
             
             if (data && data['Döküman No'] && !extractedDocumentNumbers.has(data['Döküman No'])) {
                 console.log(`\nLOG: Belge ${data['Döküman No']} işleniyor.`);
-                extractedData.push(data);
                 extractedDocumentNumbers.add(data['Döküman No']);
 
                 const masterDoc = masterDocumentList[data['Döküman No']];
                 if (masterDoc) {
-                    const mismatches = [];
-                    if (data['Revizyon Sayısı'] && masterDoc['Revizyon Sayısı'] !== data['Revizyon Sayısı']) {
-                        mismatches.push(`Revizyon Sayısı: Ana Liste '${masterDoc['Revizyon Sayısı']}' vs. Belge '${data['Revizyon Sayısı']}'`);
-                        updatedMasterList[data['Döküman No']]['Revizyon Sayısı'] = data['Revizyon Sayısı'];
-                    }
-                    if (data['Revizyon Tarihi'] && masterDoc['Revizyon Tarihi'] !== data['Revizyon Tarihi']) {
-                        mismatches.push(`Revizyon Tarihi: Ana Liste '${masterDoc['Revizyon Tarihi']}' vs. Belge '${data['Revizyon Tarihi']}'`);
-                        updatedMasterList[data['Döküman No']]['Revizyon Tarihi'] = data['Revizyon Tarihi'];
-                    }
-                    if (data['Tarih'] && masterDoc['Tarih'] !== data['Tarih']) {
-                        mismatches.push(`Hazırlama/Yayın Tarihi: Ana Liste '${masterDoc['Tarih']}' vs. Belge '${data['Tarih']}'`);
-                        updatedMasterList[data['Döküman No']]['Tarih'] = data['Tarih'];
-                    }
-                    if (data['Döküman Adı'] && masterDoc['Döküman Adı'] !== data['Döküman Adı']) {
-                        mismatches.push(`Döküman Adı: Ana Liste '${masterDoc['Döküman Adı']}' vs. Belge '${data['Döküman Adı']}'`);
-                        updatedMasterList[data['Döküman No']]['Döküman Adı'] = data['Döküman Adı'];
-                    }
-                    if (mismatches.length > 0) {
-                        mismatchedData.push({ 'Döküman No': data['Döküman No'], 'Hata': mismatches.join('; ') });
-                    }
+                    console.log(`LOG: Ana listede belge bilgisi bulundu. Güncelleme yapılıyor.`);
+                    // Var olan kaydı güncelliyoruz
+                    updatedMasterList[data['Döküman No']]['Revizyon Sayısı'] = data['Revizyon Sayısı'];
+                    updatedMasterList[data['Döküman No']]['Revizyon Tarihi'] = data['Revizyon Tarihi'];
+                    updatedMasterList[data['Döküman No']]['Tarih'] = data['Tarih'];
+                    updatedMasterList[data['Döküman No']]['Döküman Adı'] = data['Döküman Adı'];
                 } else {
-                    mismatchedData.push({ 'Döküman No': data['Döküman No'], 'Hata': 'Ana listede bulunmuyor.' });
+                    console.log(`LOG: Belge ${data['Döküman No']} ana listede bulunamadı. Yeni kayıt olarak ekleniyor.`);
+                    // Yeni kaydı listeye ekliyoruz
                     updatedMasterList[data['Döküman No']] = data;
                 }
             }
+
+            // Geçici olarak yüklenen dosyayı sil
             try {
                 fs.unlinkSync(file.path);
             } catch (e) {
@@ -389,9 +378,9 @@ app.post('/upload', upload.array('files'), async (req, res) => {
             return res.status(400).send('Hiçbir geçerli belge işlenemedi veya ana liste oluşturulamadı.');
         }
 
+        // Güncellenmiş ana listeyi Excel dosyası olarak oluştur ve gönder
         const updatedMasterListBuffer = await createMasterListBuffer(updatedMasterList);
         
-        // Sadece güncellenmiş ana liste Excel dosyasını gönder
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename=Güncel_Doküman_Özet_Listesi.xlsx`);
         res.send(updatedMasterListBuffer);
@@ -408,3 +397,4 @@ app.listen(PORT, () => {
     console.log(`Sunucu http://localhost:${PORT} adresinde çalışıyor`);
     fs.ensureDirSync(UPLOAD_DIR);
 });
+
