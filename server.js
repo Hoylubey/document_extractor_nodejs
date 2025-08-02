@@ -10,7 +10,6 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
-// Hem CSV hem de XLSX için ana dosya yolunu genel bir isimle belirleyin
 const MASTER_FILE_NAME = 'Doküman Özet Listesi';
 const MASTER_CSV_PATH = path.join(__dirname, `${MASTER_FILE_NAME}.csv`);
 const MASTER_XLSX_PATH = path.join(__dirname, `${MASTER_FILE_NAME}.xlsx`);
@@ -44,7 +43,6 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// CSV veya XLSX dosyasını okuyup ayrıştırmak için tek bir fonksiyon
 async function parseMasterList() {
     let filePath;
     let fileExtension;
@@ -304,29 +302,41 @@ app.post('/upload', upload.array('files'), async (req, res) => {
             const data = await extractInfo(file.path, originalRelativePath);
             
             if (data && data['Döküman No'] && !extractedDocumentNumbers.has(data['Döküman No'])) {
+                console.log(`\nLOG: Belge ${data['Döküman No']} işleniyor.`);
                 extractedData.push(data);
                 extractedDocumentNumbers.add(data['Döküman No']);
 
                 const masterDoc = masterDocumentList[data['Döküman No']];
                 if (masterDoc) {
+                    console.log(`LOG: Ana listede belge bilgisi bulundu. Karşılaştırma yapılıyor.`);
                     const mismatches = [];
+
+                    console.log(`LOG: Revizyon Sayısı Karşılaştırılıyor: Ana Liste -> '${masterDoc['Revizyon Sayısı']}', Yüklenen Belge -> '${data['Revizyon Sayısı']}'`);
                     if (masterDoc['Revizyon Sayısı'] !== data['Revizyon Sayısı']) {
                         mismatches.push(`Revizyon Sayısı: Ana Liste '${masterDoc['Revizyon Sayısı']}' vs. Belge '${data['Revizyon Sayısı']}'`);
                     }
+
+                    console.log(`LOG: Revizyon Tarihi Karşılaştırılıyor: Ana Liste -> '${masterDoc['Revizyon Tarihi']}', Yüklenen Belge -> '${data['Revizyon Tarihi']}'`);
                     if (masterDoc['Revizyon Tarihi'] !== data['Revizyon Tarihi']) {
                         mismatches.push(`Revizyon Tarihi: Ana Liste '${masterDoc['Revizyon Tarihi']}' vs. Belge '${data['Revizyon Tarihi']}'`);
                     }
+
+                    console.log(`LOG: Hazırlama Tarihi Karşılaştırılıyor: Ana Liste -> '${masterDoc['Tarih']}', Yüklenen Belge -> '${data['Tarih']}'`);
                     if (masterDoc['Tarih'] !== data['Tarih']) {
                         mismatches.push(`Hazırlama/Yayın Tarihi: Ana Liste '${masterDoc['Tarih']}' vs. Belge '${data['Tarih']}'`);
                     }
 
                     if (mismatches.length > 0) {
+                        console.log(`LOG: Belge ${data['Döküman No']} için ${mismatches.length} adet uyumsuzluk bulundu.`);
                         mismatchedData.push({
                             'Döküman No': data['Döküman No'],
                             'Hata': mismatches.join('; ')
                         });
+                    } else {
+                        console.log(`LOG: Belge ${data['Döküman No']} ana liste ile tam uyumlu.`);
                     }
                 } else {
+                    console.log(`LOG: Belge ${data['Döküman No']} ana listede bulunamadı.`);
                     mismatchedData.push({
                         'Döküman No': data['Döküman No'],
                         'Hata': 'Ana listede bulunmuyor.'
