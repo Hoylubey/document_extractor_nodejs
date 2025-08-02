@@ -6,7 +6,6 @@ const PdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
 const ExcelJS = require('exceljs');
 const { v4: uuidv4 } = require('uuid');
-const AdmZip = require('adm-zip');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -320,7 +319,6 @@ async function createMasterListBuffer(updatedList) {
     return workbook.xlsx.writeBuffer();
 }
 
-
 app.post('/upload', upload.array('files'), async (req, res) => {
     try {
         const uploadedFiles = req.files;
@@ -355,108 +353,50 @@ app.post('/upload', upload.array('files'), async (req, res) => {
 
                 const masterDoc = masterDocumentList[data['Döküman No']];
                 if (masterDoc) {
-                    console.log(`LOG: Ana listede belge bilgisi bulundu. Karşılaştırma ve güncelleme yapılıyor.`);
                     const mismatches = [];
-
-                    // Revizyon Sayısı karşılaştırması ve güncellemesi
                     if (data['Revizyon Sayısı'] && masterDoc['Revizyon Sayısı'] !== data['Revizyon Sayısı']) {
-                        console.log(`LOG: Revizyon Sayısı güncellendi: '${masterDoc['Revizyon Sayısı']}' -> '${data['Revizyon Sayısı']}'`);
                         mismatches.push(`Revizyon Sayısı: Ana Liste '${masterDoc['Revizyon Sayısı']}' vs. Belge '${data['Revizyon Sayısı']}'`);
                         updatedMasterList[data['Döküman No']]['Revizyon Sayısı'] = data['Revizyon Sayısı'];
                     }
-
-                    // Revizyon Tarihi karşılaştırması ve güncellemesi
                     if (data['Revizyon Tarihi'] && masterDoc['Revizyon Tarihi'] !== data['Revizyon Tarihi']) {
-                        console.log(`LOG: Revizyon Tarihi güncellendi: '${masterDoc['Revizyon Tarihi']}' -> '${data['Revizyon Tarihi']}'`);
                         mismatches.push(`Revizyon Tarihi: Ana Liste '${masterDoc['Revizyon Tarihi']}' vs. Belge '${data['Revizyon Tarihi']}'`);
                         updatedMasterList[data['Döküman No']]['Revizyon Tarihi'] = data['Revizyon Tarihi'];
                     }
-
-                    // Hazırlama/Yayın Tarihi karşılaştırması ve güncellemesi
                     if (data['Tarih'] && masterDoc['Tarih'] !== data['Tarih']) {
-                        console.log(`LOG: Hazırlama/Yayın Tarihi güncellendi: '${masterDoc['Tarih']}' -> '${data['Tarih']}'`);
                         mismatches.push(`Hazırlama/Yayın Tarihi: Ana Liste '${masterDoc['Tarih']}' vs. Belge '${data['Tarih']}'`);
                         updatedMasterList[data['Döküman No']]['Tarih'] = data['Tarih'];
                     }
-
-                    // Döküman Adı karşılaştırması ve güncellemesi
                     if (data['Döküman Adı'] && masterDoc['Döküman Adı'] !== data['Döküman Adı']) {
-                        console.log(`LOG: Döküman Adı güncellendi: '${masterDoc['Döküman Adı']}' -> '${data['Döküman Adı']}'`);
                         mismatches.push(`Döküman Adı: Ana Liste '${masterDoc['Döküman Adı']}' vs. Belge '${data['Döküman Adı']}'`);
                         updatedMasterList[data['Döküman No']]['Döküman Adı'] = data['Döküman Adı'];
                     }
-
                     if (mismatches.length > 0) {
-                        console.log(`LOG: Belge ${data['Döküman No']} için ${mismatches.length} adet uyumsuzluk bulundu ve ana liste güncellendi.`);
-                        mismatchedData.push({
-                            'Döküman No': data['Döküman No'],
-                            'Hata': mismatches.join('; ')
-                        });
-                    } else {
-                        console.log(`LOG: Belge ${data['Döküman No']} ana liste ile tam uyumlu.`);
+                        mismatchedData.push({ 'Döküman No': data['Döküman No'], 'Hata': mismatches.join('; ') });
                     }
                 } else {
-                    console.log(`LOG: Belge ${data['Döküman No']} ana listede bulunamadı.`);
-                    mismatchedData.push({
-                        'Döküman No': data['Döküman No'],
-                        'Hata': 'Ana listede bulunmuyor.'
-                    });
-                    // Ana listede bulunmayan belgeyi de yeni listeye ekliyoruz
+                    mismatchedData.push({ 'Döküman No': data['Döküman No'], 'Hata': 'Ana listede bulunmuyor.' });
                     updatedMasterList[data['Döküman No']] = data;
                 }
             }
             try {
                 fs.unlinkSync(file.path);
-                console.log(`LOG: Dosya başarıyla silindi: ${file.path}`);
             } catch (e) {
                 console.error(`HATA: Dosya silinirken hata oluştu: ${file.path}`, e);
             }
         }
 
-        if (extractedData.length === 0) {
-            return res.status(400).send('Hiçbir geçerli belge işlenemedi veya hepsi mükerrerdi.');
+        if (Object.keys(updatedMasterList).length === 0) {
+            return res.status(400).send('Hiçbir geçerli belge işlenemedi veya ana liste oluşturulamadı.');
         }
 
-        const zip = new AdmZip();
-        
-        // 1. Yeni belgelerden çıkarılan bilgileri içeren Excel dosyasının buffer'ını oluştur
-        const extractedDataWorkbook = new ExcelJS.Workbook();
-        const extractedDataWorksheet = extractedDataWorkbook.addWorksheet('Belge Bilgileri');
-        const extractedDataHeaders = ['Döküman No', 'Tarih', 'Revizyon Tarihi', 'Revizyon Sayısı', 'Sorumlu Departman', 'Döküman Adı'];
-        extractedDataWorksheet.addRow(extractedDataHeaders);
-        extractedData.forEach(rowData => {
-            const rowValues = extractedDataHeaders.map(header => rowData[header] || '');
-            extractedDataWorksheet.addRow(rowValues);
-        });
-        const extractedDataBuffer = await extractedDataWorkbook.xlsx.writeBuffer();
-        zip.addFile('Belge_Bilgileri.xlsx', extractedDataBuffer);
-
-        // 2. Güncellenmiş ana listenin buffer'ını oluştur ve ZIP'e ekle
         const updatedMasterListBuffer = await createMasterListBuffer(updatedMasterList);
-        zip.addFile('Güncel_Doküman_Özet_Listesi.xlsx', updatedMasterListBuffer);
-
-        // 3. Hata listesi varsa, onun buffer'ını oluştur ve ZIP'e ekle
-        if (mismatchedData.length > 0) {
-            const mismatchWorkbook = new ExcelJS.Workbook();
-            const mismatchWorksheet = mismatchWorkbook.addWorksheet('Eşleşmeyen Bilgiler');
-            const mismatchHeaders = ['Döküman No', 'Hata'];
-            mismatchWorksheet.addRow(mismatchHeaders);
-            mismatchedData.forEach(rowData => {
-                const rowValues = mismatchHeaders.map(header => rowData[header] || '');
-                mismatchWorksheet.addRow(rowValues);
-            });
-            const mismatchBuffer = await mismatchWorkbook.xlsx.writeBuffer();
-            zip.addFile('Eşleşmeyen_Bilgiler.xlsx', mismatchBuffer);
-        }
         
-        const zipBuffer = zip.toBuffer();
-        
-        // 4. Doğru başlıklar ile ZIP dosyasını gönder
-        res.setHeader('Content-Type', 'application/zip');
-        res.setHeader('Content-Disposition', 'attachment; filename=Raporlar.zip');
-        res.end(zipBuffer);
+        // Sadece güncellenmiş ana liste Excel dosyasını gönder
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename=Güncel_Doküman_Özet_Listesi.xlsx`);
+        res.send(updatedMasterListBuffer);
 
-        console.log("LOG: Excel dosyaları başarıyla oluşturuldu ve ZIP arşivi olarak gönderildi.");
+        console.log("LOG: Güncel ana liste Excel dosyası başarıyla oluşturuldu ve gönderildi.");
 
     } catch (error) {
         console.error("KRİTİK HATA: Yükleme rotası işlenirken genel bir hata oluştu:", error);
