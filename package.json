@@ -7,7 +7,7 @@
     "multer": "^2.0.2",
     "pdf-parse": "^1.1.1",
     "uuid": "^9.0.1",
-    "adm-zip": "^0.5.16",
+    "adm-zip": "^0.5.16"
   },
   "name": "document_extractor_nodejs",
   "version": "1.0.0",
