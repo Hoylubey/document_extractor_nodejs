@@ -43,6 +43,7 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// CSV veya XLSX dosyasını okuyup ayrıştırmak için tek bir fonksiyon
 async function parseMasterList() {
     let filePath;
     let fileExtension;
@@ -188,11 +189,51 @@ async function parseMasterList() {
             });
         }
         console.log(`LOG: Ana listede ${Object.keys(masterList).length} adet belge bilgisi başarıyla yüklendi.`);
-        return masterList;
+        return { masterList, fileExtension };
     } catch (e) {
         console.error(`KRİTİK HATA: Ana doküman listesi dosyası (${filePath}) işlenirken hata oluştu:`, e);
         throw e;
     }
+}
+
+// Ana listeyi diske yazmak için yeni fonksiyon
+async function writeMasterList(updatedList, fileExtension) {
+    console.log(`LOG: Güncellenmiş ana liste diske yazılıyor... Uzantı: ${fileExtension}`);
+    const headers = ['Doküman Kodu', 'Hazırlama Tarihi', 'Revizyon No', 'Revizyon Tarihi', 'Sorumlu Kısım', 'Doküman Adı'];
+    const updatedRecords = Object.values(updatedList);
+
+    if (fileExtension === 'xlsx') {
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet(MASTER_FILE_NAME);
+        worksheet.addRow(headers);
+        updatedRecords.forEach(doc => {
+            worksheet.addRow([
+                doc['Döküman No'],
+                doc['Tarih'],
+                doc['Revizyon Sayısı'],
+                doc['Revizyon Tarihi'],
+                doc['Sorumlu Departman'],
+                doc['Dosya İsmi']
+            ]);
+        });
+        await workbook.xlsx.writeFile(MASTER_XLSX_PATH);
+    } else { // 'csv'
+        const csvContent = [
+            headers.map(h => `"${h}"`).join(';'),
+            ...updatedRecords.map(doc => {
+                return [
+                    `"${doc['Döküman No']}"`,
+                    `"${doc['Tarih']}"`,
+                    `"${doc['Revizyon Sayısı']}"`,
+                    `"${doc['Revizyon Tarihi']}"`,
+                    `"${doc['Sorumlu Departman']}"`,
+                    `"${doc['Dosya İsmi']}"`
+                ].join(';');
+            })
+        ].join('\n');
+        fs.writeFileSync(MASTER_CSV_PATH, csvContent, 'utf-8');
+    }
+    console.log("LOG: Ana liste başarıyla güncellendi.");
 }
 
 
@@ -285,14 +326,19 @@ app.post('/upload', upload.array('files'), async (req, res) => {
 
         console.log("LOG: Ana doküman listesi okunuyor...");
         let masterDocumentList = {};
+        let masterFileExtension = 'csv';
         try {
-            masterDocumentList = await parseMasterList();
+            const result = await parseMasterList();
+            masterDocumentList = result.masterList;
+            masterFileExtension = result.fileExtension;
             console.log(`LOG: Ana listede ${Object.keys(masterDocumentList).length} adet belge bilgisi yüklendi.`);
         } catch (e) {
             console.error(`KRİTİK HATA: Ana doküman listesi dosyası (${MASTER_FILE_NAME}) okunamadı.`, e);
             return res.status(500).send(`Sunucu hatası: Ana doküman listesi dosyası bulunamıyor veya okunamıyor. Hata: ${e.message}`);
         }
         
+        // Ana listenin kopyasını oluşturuyoruz, böylece değişiklikleri bu kopya üzerinde yapacağız
+        const updatedMasterList = JSON.parse(JSON.stringify(masterDocumentList));
         const extractedData = [];
         const extractedDocumentNumbers = new Set();
         const mismatchedData = [];
@@ -308,26 +354,29 @@ app.post('/upload', upload.array('files'), async (req, res) => {
 
                 const masterDoc = masterDocumentList[data['Döküman No']];
                 if (masterDoc) {
-                    console.log(`LOG: Ana listede belge bilgisi bulundu. Karşılaştırma yapılıyor.`);
+                    console.log(`LOG: Ana listede belge bilgisi bulundu. Karşılaştırma ve güncelleme yapılıyor.`);
                     const mismatches = [];
 
-                    console.log(`LOG: Revizyon Sayısı Karşılaştırılıyor: Ana Liste -> '${masterDoc['Revizyon Sayısı']}', Yüklenen Belge -> '${data['Revizyon Sayısı']}'`);
-                    if (masterDoc['Revizyon Sayısı'] !== data['Revizyon Sayısı']) {
+                    // Revizyon Sayısı karşılaştırması ve güncellemesi
+                    if (masterDoc['Revizyon Sayısı'] !== data['Revizyon Sayısı'] && data['Revizyon Sayısı']) {
                         mismatches.push(`Revizyon Sayısı: Ana Liste '${masterDoc['Revizyon Sayısı']}' vs. Belge '${data['Revizyon Sayısı']}'`);
+                        updatedMasterList[data['Döküman No']]['Revizyon Sayısı'] = data['Revizyon Sayısı'];
                     }
 
-                    console.log(`LOG: Revizyon Tarihi Karşılaştırılıyor: Ana Liste -> '${masterDoc['Revizyon Tarihi']}', Yüklenen Belge -> '${data['Revizyon Tarihi']}'`);
-                    if (masterDoc['Revizyon Tarihi'] !== data['Revizyon Tarihi']) {
+                    // Revizyon Tarihi karşılaştırması ve güncellemesi
+                    if (masterDoc['Revizyon Tarihi'] !== data['Revizyon Tarihi'] && data['Revizyon Tarihi']) {
                         mismatches.push(`Revizyon Tarihi: Ana Liste '${masterDoc['Revizyon Tarihi']}' vs. Belge '${data['Revizyon Tarihi']}'`);
+                        updatedMasterList[data['Döküman No']]['Revizyon Tarihi'] = data['Revizyon Tarihi'];
                     }
 
-                    console.log(`LOG: Hazırlama Tarihi Karşılaştırılıyor: Ana Liste -> '${masterDoc['Tarih']}', Yüklenen Belge -> '${data['Tarih']}'`);
-                    if (masterDoc['Tarih'] !== data['Tarih']) {
+                    // Hazırlama/Yayın Tarihi karşılaştırması ve güncellemesi
+                    if (masterDoc['Tarih'] !== data['Tarih'] && data['Tarih']) {
                         mismatches.push(`Hazırlama/Yayın Tarihi: Ana Liste '${masterDoc['Tarih']}' vs. Belge '${data['Tarih']}'`);
+                        updatedMasterList[data['Döküman No']]['Tarih'] = data['Tarih'];
                     }
 
                     if (mismatches.length > 0) {
-                        console.log(`LOG: Belge ${data['Döküman No']} için ${mismatches.length} adet uyumsuzluk bulundu.`);
+                        console.log(`LOG: Belge ${data['Döküman No']} için ${mismatches.length} adet uyumsuzluk bulundu ve ana liste güncellendi.`);
                         mismatchedData.push({
                             'Döküman No': data['Döküman No'],
                             'Hata': mismatches.join('; ')
@@ -350,6 +399,9 @@ app.post('/upload', upload.array('files'), async (req, res) => {
                 console.error(`HATA: Dosya silinirken hata oluştu: ${file.path}`, e);
             }
         }
+
+        // Güncellenmiş ana listeyi diske yazıyoruz
+        await writeMasterList(updatedMasterList, masterFileExtension);
         
         if (extractedData.length === 0) {
             return res.status(400).send('Hiçbir geçerli belge işlenemedi veya hepsi mükerrerdi.');
