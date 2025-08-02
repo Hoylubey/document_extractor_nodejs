@@ -10,6 +10,7 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
+const MASTER_CSV_PATH = path.join(__dirname, 'Doküman Özet Listesi.xlsx - Sayfa1.csv'); // Ana liste dosyası yolu
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -40,6 +41,58 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// CSV verilerini ana doküman listesi olarak işleme fonksiyonu
+function parseCsvData(csvContent) {
+    const lines = csvContent.split('\n').filter(line => line.trim() !== '');
+    if (lines.length <= 1) return {};
+    
+    // Header'ı bul ve alan isimlerini eşleştir
+    let headerLine = '';
+    for(const line of lines) {
+        if (line.includes('Doküman Kodu')) {
+            headerLine = line;
+            break;
+        }
+    }
+    if (!headerLine) {
+        console.error("HATA: CSV dosyasında 'Doküman Kodu' başlığı bulunamadı.");
+        return {};
+    }
+    
+    const headers = headerLine.split(',').map(h => h.trim().replace(/"/g, ''));
+    const docCodeIndex = headers.indexOf('Doküman Kodu');
+    const preparationDateIndex = headers.indexOf('Hazırlama Tarihi');
+    const revisionNoIndex = headers.indexOf('Revizyon No');
+    const revisionDateIndex = headers.indexOf('Revizyon Tarihi');
+    const responsibleDeptIndex = headers.indexOf('Sorumlu Kısım');
+
+    if (docCodeIndex === -1) {
+        console.error("HATA: 'Doküman Kodu' sütunu bulunamadı.");
+        return {};
+    }
+
+    const masterList = {};
+    const dataLines = lines.slice(lines.indexOf(headerLine) + 1);
+
+    dataLines.forEach(line => {
+        const columns = line.split(',').map(c => c.trim().replace(/"/g, ''));
+        if (columns.length > docCodeIndex) {
+            const docCode = columns[docCodeIndex];
+            if (docCode) {
+                masterList[docCode] = {
+                    'Döküman Kodu': docCode,
+                    'Tarih': columns[preparationDateIndex] || '',
+                    'Revizyon Sayısı': columns[revisionNoIndex] || '0',
+                    'Revizyon Tarihi': columns[revisionDateIndex] || '',
+                    'Sorumlu Departman': columns[responsibleDeptIndex] || '',
+                };
+            }
+        }
+    });
+
+    return masterList;
+}
+
 // Bilgi çıkarma fonksiyonu
 async function extractInfo(filePath, originalRelativePath) {
     const docInfo = {
@@ -69,14 +122,12 @@ async function extractInfo(filePath, originalRelativePath) {
             tempFileName = tempFileName.replace(new RegExp(`_${maxRev}`), '');
         }
 
-        // Döküman No ve Dosya İsmini ayır (Güncellenmiş Mantık)
         const lastHyphenIndex = tempFileName.lastIndexOf('-');
         
-        if (lastHyphenIndex !== -1 && lastHyphenIndex > 0) { // Tire işareti varsa ve dosya adının başında değilse
+        if (lastHyphenIndex !== -1 && lastHyphenIndex > 0) {
             docInfo['Döküman No'] = tempFileName.substring(0, lastHyphenIndex).trim();
             docInfo['Dosya İsmi'] = tempFileName.substring(lastHyphenIndex + 1).trim();
         } else {
-            // Eğer hiç tire yoksa veya en başta ise, dosya adının tamamını Döküman No olarak kabul et
             docInfo['Döküman No'] = tempFileName.trim();
         }
         
@@ -123,21 +174,60 @@ async function extractInfo(filePath, originalRelativePath) {
     return docInfo;
 }
 
+// Yükleme ve işleme rotası
 app.post('/upload', upload.array('files'), async (req, res) => {
     try {
         const uploadedFiles = req.files;
         if (!uploadedFiles || uploadedFiles.length === 0) {
             return res.status(400).send('Dosya yüklenmedi veya klasör seçilmedi.');
         }
-        console.log(`LOG: ${uploadedFiles.length} adet dosya yüklendi.`);
+
+        console.log("LOG: Ana doküman listesi okunuyor...");
+        const masterCsvContent = fs.readFileSync(MASTER_CSV_PATH, 'utf-8');
+        const masterDocumentList = parseCsvData(masterCsvContent);
+        console.log(`LOG: Ana listede ${Object.keys(masterDocumentList).length} adet belge bilgisi mevcut.`);
+        
         const extractedData = [];
         const extractedDocumentNumbers = new Set();
+        const mismatchedData = [];
+
         for (const file of uploadedFiles) {
             const originalRelativePath = file.originalname;
             const data = await extractInfo(file.path, originalRelativePath);
+            
             if (data && data['Döküman No'] && !extractedDocumentNumbers.has(data['Döküman No'])) {
                 extractedData.push(data);
                 extractedDocumentNumbers.add(data['Döküman No']);
+
+                // Ana liste ile karşılaştırma
+                const masterDoc = masterDocumentList[data['Döküman No']];
+                if (masterDoc) {
+                    const mismatches = [];
+                    // Revizyon Sayısı kontrolü
+                    if (masterDoc['Revizyon Sayısı'] !== data['Revizyon Sayısı']) {
+                        mismatches.push(`Revizyon Sayısı: Ana Liste '${masterDoc['Revizyon Sayısı']}' vs. Belge '${data['Revizyon Sayısı']}'`);
+                    }
+                    // Revizyon Tarihi kontrolü
+                    if (masterDoc['Revizyon Tarihi'] !== data['Revizyon Tarihi']) {
+                        mismatches.push(`Revizyon Tarihi: Ana Liste '${masterDoc['Revizyon Tarihi']}' vs. Belge '${data['Revizyon Tarihi']}'`);
+                    }
+                    // Hazırlama/Yayın Tarihi kontrolü
+                    if (masterDoc['Tarih'] !== data['Tarih']) {
+                        mismatches.push(`Hazırlama/Yayın Tarihi: Ana Liste '${masterDoc['Tarih']}' vs. Belge '${data['Tarih']}'`);
+                    }
+
+                    if (mismatches.length > 0) {
+                        mismatchedData.push({
+                            'Döküman No': data['Döküman No'],
+                            'Hata': mismatches.join('; ')
+                        });
+                    }
+                } else {
+                    mismatchedData.push({
+                        'Döküman No': data['Döküman No'],
+                        'Hata': 'Ana listede bulunmuyor.'
+                    });
+                }
             }
             try {
                 fs.unlinkSync(file.path);
@@ -146,10 +236,14 @@ app.post('/upload', upload.array('files'), async (req, res) => {
                 console.error(`HATA: Dosya silinirken hata oluştu: ${file.path}`, e);
             }
         }
+        
         if (extractedData.length === 0) {
             return res.status(400).send('Hiçbir geçerli belge işlenemedi veya hepsi mükerrerdi.');
         }
+
         const workbook = new ExcelJS.Workbook();
+
+        // 1. Sayfa: Belge Bilgileri
         const worksheet = workbook.addWorksheet('Belge Bilgileri');
         const headers = ['Döküman No', 'Tarih', 'Revizyon Tarihi', 'Revizyon Sayısı', 'Sorumlu Departman', 'Dosya İsmi'];
         worksheet.addRow(headers);
@@ -157,11 +251,24 @@ app.post('/upload', upload.array('files'), async (req, res) => {
             const rowValues = headers.map(header => rowData[header] || '');
             worksheet.addRow(rowValues);
         });
+
+        // 2. Sayfa: Eşleşmeyen Bilgiler
+        if (mismatchedData.length > 0) {
+            const mismatchWorksheet = workbook.addWorksheet('Eşleşmeyen Bilgiler');
+            const mismatchHeaders = ['Döküman No', 'Hata'];
+            mismatchWorksheet.addRow(mismatchHeaders);
+            mismatchedData.forEach(rowData => {
+                const rowValues = mismatchHeaders.map(header => rowData[header] || '');
+                mismatchWorksheet.addRow(rowValues);
+            });
+        }
+        
         const buffer = await workbook.xlsx.writeBuffer();
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', 'attachment; filename=Belge_Bilgileri.xlsx');
         res.send(buffer);
         console.log("LOG: Excel dosyası başarıyla oluşturuldu ve gönderildi.");
+
     } catch (error) {
         console.error("KRİTİK HATA: Yükleme rotası işlenirken genel bir hata oluştu:", error);
         res.status(500).send('Sunucu tarafında bir hata oluştu.');
