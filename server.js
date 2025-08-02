@@ -10,7 +10,8 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
-const MASTER_CSV_PATH = path.join(__dirname, 'Doküman Özet Listesi.xlsx - Sayfa1.csv'); // Ana liste dosyası yolu
+// Dosya adını sadece "Doküman Özet Listesi.csv" olarak güncelledik.
+const MASTER_CSV_PATH = path.join(__dirname, 'Doküman Özet Listesi.csv');
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -41,59 +42,71 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// CSV verilerini ana doküman listesi olarak işleme fonksiyonu
 function parseCsvData(csvContent) {
-    const lines = csvContent.split('\n').filter(line => line.trim() !== '');
-    if (lines.length <= 1) return {};
-    
-    // Header'ı bul ve alan isimlerini eşleştir
-    let headerLine = '';
-    for(const line of lines) {
-        if (line.includes('Doküman Kodu')) {
-            headerLine = line;
-            break;
+    try {
+        const lines = csvContent.split('\n').filter(line => line.trim() !== '');
+        if (lines.length <= 1) {
+            console.error("HATA: CSV dosyası boş veya sadece bir başlık satırı içeriyor.");
+            return {};
         }
-    }
-    if (!headerLine) {
-        console.error("HATA: CSV dosyasında 'Doküman Kodu' başlığı bulunamadı.");
-        return {};
-    }
-    
-    const headers = headerLine.split(',').map(h => h.trim().replace(/"/g, ''));
-    const docCodeIndex = headers.indexOf('Doküman Kodu');
-    const preparationDateIndex = headers.indexOf('Hazırlama Tarihi');
-    const revisionNoIndex = headers.indexOf('Revizyon No');
-    const revisionDateIndex = headers.indexOf('Revizyon Tarihi');
-    const responsibleDeptIndex = headers.indexOf('Sorumlu Kısım');
 
-    if (docCodeIndex === -1) {
-        console.error("HATA: 'Doküman Kodu' sütunu bulunamadı.");
-        return {};
-    }
-
-    const masterList = {};
-    const dataLines = lines.slice(lines.indexOf(headerLine) + 1);
-
-    dataLines.forEach(line => {
-        const columns = line.split(',').map(c => c.trim().replace(/"/g, ''));
-        if (columns.length > docCodeIndex) {
-            const docCode = columns[docCodeIndex];
-            if (docCode) {
-                masterList[docCode] = {
-                    'Döküman Kodu': docCode,
-                    'Tarih': columns[preparationDateIndex] || '',
-                    'Revizyon Sayısı': columns[revisionNoIndex] || '0',
-                    'Revizyon Tarihi': columns[revisionDateIndex] || '',
-                    'Sorumlu Departman': columns[responsibleDeptIndex] || '',
-                };
+        let headerLine = '';
+        for(const line of lines) {
+            if (line.includes('Doküman Kodu')) {
+                headerLine = line;
+                break;
             }
         }
-    });
+        
+        if (!headerLine) {
+            console.error("HATA: CSV dosyasında 'Doküman Kodu' başlığı bulunamadı.");
+            return {};
+        }
 
-    return masterList;
+        const headers = headerLine.split(',').map(h => h.trim().replace(/"/g, ''));
+        const docCodeIndex = headers.indexOf('Doküman Kodu');
+        const preparationDateIndex = headers.indexOf('Hazırlama Tarihi');
+        const revisionNoIndex = headers.indexOf('Revizyon No');
+        const revisionDateIndex = headers.indexOf('Revizyon Tarihi');
+        const responsibleDeptIndex = headers.indexOf('Sorumlu Kısım');
+
+        if (docCodeIndex === -1) {
+            console.error("HATA: 'Doküman Kodu' sütunu bulunamadı. Lütfen başlığı kontrol edin.");
+            return {};
+        }
+
+        const masterList = {};
+        const dataLines = lines.slice(lines.indexOf(headerLine) + 1);
+
+        dataLines.forEach((line, index) => {
+            try {
+                const columns = line.split(',').map(c => c.trim().replace(/"/g, ''));
+                if (columns.length > docCodeIndex) {
+                    const docCode = columns[docCodeIndex];
+                    if (docCode) {
+                        masterList[docCode] = {
+                            'Döküman Kodu': docCode,
+                            'Tarih': columns[preparationDateIndex] || '',
+                            'Revizyon Sayısı': columns[revisionNoIndex] || '0',
+                            'Revizyon Tarihi': columns[revisionDateIndex] || '',
+                            'Sorumlu Departman': columns[responsibleDeptIndex] || '',
+                        };
+                    }
+                }
+            } catch (e) {
+                console.error(`HATA: CSV satırı işlenirken hata oluştu (satır ${index + 1}):`, e);
+            }
+        });
+
+        console.log(`LOG: Ana listede ${Object.keys(masterList).length} adet belge bilgisi başarıyla yüklendi.`);
+        return masterList;
+    } catch (e) {
+        console.error("KRİTİK HATA: CSV dosyasını ayrıştırma sırasında genel hata oluştu:", e);
+        return {};
+    }
 }
 
-// Bilgi çıkarma fonksiyonu
+
 async function extractInfo(filePath, originalRelativePath) {
     const docInfo = {
         'Döküman No': '',
@@ -174,7 +187,6 @@ async function extractInfo(filePath, originalRelativePath) {
     return docInfo;
 }
 
-// Yükleme ve işleme rotası
 app.post('/upload', upload.array('files'), async (req, res) => {
     try {
         const uploadedFiles = req.files;
@@ -183,9 +195,15 @@ app.post('/upload', upload.array('files'), async (req, res) => {
         }
 
         console.log("LOG: Ana doküman listesi okunuyor...");
-        const masterCsvContent = fs.readFileSync(MASTER_CSV_PATH, 'utf-8');
-        const masterDocumentList = parseCsvData(masterCsvContent);
-        console.log(`LOG: Ana listede ${Object.keys(masterDocumentList).length} adet belge bilgisi mevcut.`);
+        let masterDocumentList = {};
+        try {
+            const masterCsvContent = fs.readFileSync(MASTER_CSV_PATH, 'utf-8');
+            masterDocumentList = parseCsvData(masterCsvContent);
+            console.log(`LOG: Ana listede ${Object.keys(masterDocumentList).length} adet belge bilgisi yüklendi.`);
+        } catch (e) {
+            console.error(`KRİTİK HATA: Ana doküman listesi dosyası (${MASTER_CSV_PATH}) okunamadı. Dosyanın mevcut ve doğru yerde olduğundan emin olun.`, e);
+            return res.status(500).send('Sunucu hatası: Ana doküman listesi dosyası bulunamıyor veya okunamıyor. Lütfen Render loglarını kontrol edin.');
+        }
         
         const extractedData = [];
         const extractedDocumentNumbers = new Set();
@@ -199,19 +217,15 @@ app.post('/upload', upload.array('files'), async (req, res) => {
                 extractedData.push(data);
                 extractedDocumentNumbers.add(data['Döküman No']);
 
-                // Ana liste ile karşılaştırma
                 const masterDoc = masterDocumentList[data['Döküman No']];
                 if (masterDoc) {
                     const mismatches = [];
-                    // Revizyon Sayısı kontrolü
                     if (masterDoc['Revizyon Sayısı'] !== data['Revizyon Sayısı']) {
                         mismatches.push(`Revizyon Sayısı: Ana Liste '${masterDoc['Revizyon Sayısı']}' vs. Belge '${data['Revizyon Sayısı']}'`);
                     }
-                    // Revizyon Tarihi kontrolü
                     if (masterDoc['Revizyon Tarihi'] !== data['Revizyon Tarihi']) {
                         mismatches.push(`Revizyon Tarihi: Ana Liste '${masterDoc['Revizyon Tarihi']}' vs. Belge '${data['Revizyon Tarihi']}'`);
                     }
-                    // Hazırlama/Yayın Tarihi kontrolü
                     if (masterDoc['Tarih'] !== data['Tarih']) {
                         mismatches.push(`Hazırlama/Yayın Tarihi: Ana Liste '${masterDoc['Tarih']}' vs. Belge '${data['Tarih']}'`);
                     }
@@ -242,8 +256,6 @@ app.post('/upload', upload.array('files'), async (req, res) => {
         }
 
         const workbook = new ExcelJS.Workbook();
-
-        // 1. Sayfa: Belge Bilgileri
         const worksheet = workbook.addWorksheet('Belge Bilgileri');
         const headers = ['Döküman No', 'Tarih', 'Revizyon Tarihi', 'Revizyon Sayısı', 'Sorumlu Departman', 'Dosya İsmi'];
         worksheet.addRow(headers);
@@ -252,7 +264,6 @@ app.post('/upload', upload.array('files'), async (req, res) => {
             worksheet.addRow(rowValues);
         });
 
-        // 2. Sayfa: Eşleşmeyen Bilgiler
         if (mismatchedData.length > 0) {
             const mismatchWorksheet = workbook.addWorksheet('Eşleşmeyen Bilgiler');
             const mismatchHeaders = ['Döküman No', 'Hata'];
