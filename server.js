@@ -86,7 +86,10 @@ async function parseMasterList() {
             const revisionNoIndex = headers.indexOf('Revizyon No');
             const revisionDateIndex = headers.indexOf('Revizyon Tarihi');
             const responsibleDeptIndex = headers.indexOf('Sorumlu Kısım');
-            const docNameIndex = headers.indexOf('Döküman Adı');
+            
+            // "Döküman Adı" başlığı hücre birleştirme nedeniyle tek bir sütunda olmayabilir.
+            // Bu nedenle, doğrudan 2. sütunu (index 1) kullanıyoruz.
+            const docNameIndex = 1; 
 
             if (docCodeIndex === -1) {
                 throw new Error("'Doküman Kodu' sütunu bulunamadı.");
@@ -237,7 +240,12 @@ async function writeMasterList(updatedList, fileExtension) {
                 }
 
                 if (rowToUpdate) {
-                    headersToUpdate.forEach(headerKey => {
+                    // Döküman Adı için özel işlem, çünkü hücre birleştirilmiş olabilir
+                    const docNameCell = rowToUpdate.getCell(2);
+                    docNameCell.value = updatedDoc['Döküman Adı'];
+
+                    // Diğer başlıklar için normal döngü
+                    headersToUpdate.filter(h => h !== 'Döküman Adı').forEach(headerKey => {
                         const cellIndex = headers.indexOf(headerKey) + 1;
                         if (cellIndex > 0) {
                             rowToUpdate.getCell(cellIndex).value = updatedDoc[headerKey];
