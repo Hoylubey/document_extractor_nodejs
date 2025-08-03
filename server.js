@@ -285,17 +285,10 @@ async function createMasterListBuffer(updatedList, headers) {
     
     worksheet.addRow(headers);
 
-    // Güncelleme öncesi son kontrol için loglama
-    const docBCGR02 = updatedList['BC.GR.02'];
-    if (docBCGR02) {
-        console.log(`LOG: Excel'e yazılmadan önce, BC.GR.02 için 'Döküman Adı' değeri: '${docBCGR02['Döküman Adı']}'`);
-    } else {
-        console.log(`LOG: BC.GR.02 belgesi güncellenmiş listede bulunamadı.`);
-    }
-
     const updatedRecords = Object.values(updatedList);
     updatedRecords.forEach(doc => {
-        const rowData = headers.map(header => doc[header] || '');
+        // Tüm verileri kesin olarak metin tipine dönüştürerek Excel'e yazma
+        const rowData = headers.map(header => String(doc[header] || ''));
         worksheet.addRow(rowData);
     });
     
