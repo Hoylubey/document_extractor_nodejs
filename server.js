@@ -354,11 +354,13 @@ app.post('/upload', upload.array('files'), async (req, res) => {
                 const masterDoc = masterDocumentList[data['Döküman No']];
                 if (masterDoc) {
                     console.log(`LOG: Ana listede belge bilgisi bulundu. Güncelleme yapılıyor.`);
-                    // Var olan kaydı güncelliyoruz
-                    updatedMasterList[data['Döküman No']]['Revizyon Sayısı'] = data['Revizyon Sayısı'];
-                    updatedMasterList[data['Döküman No']]['Revizyon Tarihi'] = data['Revizyon Tarihi'];
-                    updatedMasterList[data['Döküman No']]['Tarih'] = data['Tarih'];
-                    updatedMasterList[data['Döküman No']]['Döküman Adı'] = data['Döküman Adı'];
+                    
+                    // Var olan kaydı, sadece yeni dosyadan gelen veri geçerliyse güncelliyoruz.
+                    // Bu kontrol, eski verilerin yanlışlıkla boş değerlerle silinmesini engeller.
+                    if (data['Revizyon Sayısı']) updatedMasterList[data['Döküman No']]['Revizyon Sayısı'] = data['Revizyon Sayısı'];
+                    if (data['Revizyon Tarihi']) updatedMasterList[data['Döküman No']]['Revizyon Tarihi'] = data['Revizyon Tarihi'];
+                    if (data['Tarih']) updatedMasterList[data['Döküman No']]['Tarih'] = data['Tarih'];
+                    if (data['Döküman Adı']) updatedMasterList[data['Döküman No']]['Döküman Adı'] = data['Döküman Adı'];
                 } else {
                     console.log(`LOG: Belge ${data['Döküman No']} ana listede bulunamadı. Yeni kayıt olarak ekleniyor.`);
                     // Yeni kaydı listeye ekliyoruz
@@ -392,9 +394,3 @@ app.post('/upload', upload.array('files'), async (req, res) => {
         res.status(500).send('Sunucu tarafında bir hata oluştu.');
     }
 });
-
-app.listen(PORT, () => {
-    console.log(`Sunucu http://localhost:${PORT} adresinde çalışıyor`);
-    fs.ensureDirSync(UPLOAD_DIR);
-});
-
