@@ -62,7 +62,8 @@ async function parseExcelData(excelFilePath) {
             const row = worksheet.getRow(i);
             let found = false;
             row.eachCell((cell) => {
-                if (String(cell.value).trim() === 'Doküman Kodu') {
+                const cellValue = String(cell.value).trim();
+                if (cellValue === 'Doküman Kodu' || cellValue === 'Döküman Kodu') {
                     headerRowNumber = i;
                     found = true;
                     return false; // Döngüyü durdur
@@ -99,13 +100,15 @@ async function parseExcelData(excelFilePath) {
                 headers.forEach((header, colIndex) => {
                     const cellValue = row.getCell(colIndex + 1).value;
                     let value = '';
-                    if (typeof cellValue === 'object' && cellValue !== null) {
+                    if (cellValue instanceof Date) {
+                         // Hata veren satır yerine, tarihleri düzgün bir stringe dönüştür
+                        const d = cellValue;
+                        value = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+                    } else if (typeof cellValue === 'object' && cellValue !== null) {
                         if (cellValue.richText) {
                             value = cellValue.richText.map(t => t.text).join('');
                         } else if (cellValue.formula) {
                             value = cellValue.result;
-                        } else if (cellValue instanceof Date) {
-                            value = ExcelJS.calendar.jsDateToExcel(cellValue);
                         } else {
                             value = cellValue.text || '';
                         }
