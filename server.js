@@ -159,27 +159,26 @@ async function extractInfo(filePath, originalRelativePath) {
         }
 
         const lastHyphenIndex = tempFileName.lastIndexOf('-');
+        const firstSpaceIndex = tempFileName.indexOf(' ');
         
         if (lastHyphenIndex !== -1 && lastHyphenIndex > 0) {
             docInfo['Doküman Kodu'] = tempFileName.substring(0, lastHyphenIndex).trim();
             docInfo['Doküman Adı'] = tempFileName.substring(lastHyphenIndex + 1).trim();
+        } else if (firstSpaceIndex !== -1) {
+            docInfo['Doküman Kodu'] = tempFileName.substring(0, firstSpaceIndex).trim();
+            docInfo['Doküman Adı'] = tempFileName.substring(firstSpaceIndex + 1).trim();
         } else {
-            const firstSpaceIndex = tempFileName.indexOf(' ');
-            if (firstSpaceIndex !== -1) {
-                docInfo['Doküman Kodu'] = tempFileName.substring(0, firstSpaceIndex).trim();
-                docInfo['Doküman Adı'] = tempFileName.substring(firstSpaceIndex + 1).trim();
-            } else {
-                docInfo['Doküman Kodu'] = tempFileName.trim();
-                docInfo['Doküman Adı'] = '';
-            }
+            // Doküman Kodu bulunamazsa boş bırak, Doküman Adı'nı dosya adının tamamı yap
+            docInfo['Doküman Kodu'] = '';
+            docInfo['Doküman Adı'] = tempFileName.trim();
         }
         
         console.log(`LOG: Ayrıştırılan bilgiler: Doküman Kodu: ${docInfo['Doküman Kodu']}, Revizyon No: ${docInfo['Revizyon No']}, Doküman Adı: ${docInfo['Doküman Adı']}`);
 
     } catch (e) {
         console.error("HATA: Dosya adı işlenirken hata oluştu:", e);
-        docInfo['Doküman Kodu'] = fileNameWithoutExt.trim();
-        docInfo['Doküman Adı'] = '';
+        docInfo['Doküman Kodu'] = '';
+        docInfo['Doküman Adı'] = fileNameWithoutExt.trim();
     }
 
     const pathSegments = originalRelativePath.split(/[\\/]/);
@@ -262,24 +261,21 @@ app.post('/upload', upload.array('files'), async (req, res) => {
             const originalRelativePath = file.originalname;
             const data = await extractInfo(file.path, originalRelativePath);
 
-            if (data && data['Doküman Kodu']) {
-                // "kopya" içeren dosyaları atla
+            if (data && data['Doküman Kodu'] || data['Doküman Adı']) {
                 if (data['Doküman Adı'] && data['Doküman Adı'].toLowerCase().includes('kopya')) {
                     console.log(`LOG: Dosya adı "kopya" içerdiği için atlanıyor: ${originalRelativePath}`);
-                    // Dosyayı sil
                     try {
                         fs.unlinkSync(file.path);
                         console.log(`LOG: Atlanan dosya başarıyla silindi: ${file.path}`);
                     } catch (e) {
                         console.error(`HATA: Dosya silinirken hata oluştu: ${file.path}`, e);
                     }
-                    continue; // Bir sonraki dosyaya geç
+                    continue;
                 }
                 
-                const docCode = data['Doküman Kodu'];
+                const docCode = data['Doküman Kodu'] || data['Doküman Adı']; // Doküman Kodu yoksa Doküman Adı ile işlem yap
                 const revisionNo = parseInt(data['Revizyon No']) || 0;
 
-                // Eğer bu doküman kodu daha önce görülmediyse veya daha yüksek revizyon numarası varsa
                 if (!highestRevisionDocs[docCode] || revisionNo > (parseInt(highestRevisionDocs[docCode]['Revizyon No']) || 0)) {
                     highestRevisionDocs[docCode] = data;
                 }
@@ -293,7 +289,6 @@ app.post('/upload', upload.array('files'), async (req, res) => {
             }
         }
         
-        // En yüksek revizyonlu belgelerle ana listeyi güncelle
         for (const docCode in highestRevisionDocs) {
             const data = highestRevisionDocs[docCode];
             const masterDoc = updatedMasterList[docCode];
