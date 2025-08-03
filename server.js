@@ -223,8 +223,14 @@ async function extractInfo(filePath, originalRelativePath) {
             docInfo['Doküman Kodu'] = tempFileName.substring(0, lastHyphenIndex).trim();
             docInfo['Döküman Adı'] = tempFileName.substring(lastHyphenIndex + 1).trim();
         } else {
-            docInfo['Doküman Kodu'] = tempFileName.trim();
-            docInfo['Döküman Adı'] = '';
+            const firstSpaceIndex = tempFileName.indexOf(' ');
+            if (firstSpaceIndex !== -1) {
+                docInfo['Doküman Kodu'] = tempFileName.substring(0, firstSpaceIndex).trim();
+                docInfo['Döküman Adı'] = tempFileName.substring(firstSpaceIndex + 1).trim();
+            } else {
+                docInfo['Doküman Kodu'] = tempFileName.trim();
+                docInfo['Döküman Adı'] = '';
+            }
         }
         
         console.log(`LOG: Ayrıştırılan bilgiler: Doküman Kodu: ${docInfo['Doküman Kodu']}, Revizyon No: ${docInfo['Revizyon No']}, Döküman Adı: ${docInfo['Döküman Adı']}`);
@@ -273,13 +279,21 @@ async function extractInfo(filePath, originalRelativePath) {
 // Hafızadaki verilerle yeni bir Excel dosyası oluşturma ve buffer olarak döndürme
 async function createMasterListBuffer(updatedList, headers) {
     console.log(`LOG: Güncellenmiş ana liste Excel dosyası oluşturuluyor.`);
-    const updatedRecords = Object.values(updatedList);
-
+    
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet(MASTER_FILE_NAME);
     
     worksheet.addRow(headers);
-    
+
+    // Güncelleme öncesi son kontrol için loglama
+    const docBCGR02 = updatedList['BC.GR.02'];
+    if (docBCGR02) {
+        console.log(`LOG: Excel'e yazılmadan önce, BC.GR.02 için 'Döküman Adı' değeri: '${docBCGR02['Döküman Adı']}'`);
+    } else {
+        console.log(`LOG: BC.GR.02 belgesi güncellenmiş listede bulunamadı.`);
+    }
+
+    const updatedRecords = Object.values(updatedList);
     updatedRecords.forEach(doc => {
         const rowData = headers.map(header => doc[header] || '');
         worksheet.addRow(rowData);
