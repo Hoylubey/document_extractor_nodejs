@@ -256,45 +256,19 @@ app.post('/upload', upload.array('files'), async (req, res) => {
         }
 
         const updatedMasterList = JSON.parse(JSON.stringify(masterDocumentList));
-        
-        const extractedDocumentNumbers = new Set();
-        
+        const highestRevisionDocs = {};
+
         for (const file of uploadedFiles) {
             const originalRelativePath = file.originalname;
             const data = await extractInfo(file.path, originalRelativePath);
-            
+
             if (data && data['Doküman Kodu']) {
-                if (!extractedDocumentNumbers.has(data['Doküman Kodu'])) {
-                    console.log(`\nLOG: Belge ${data['Doküman Kodu']} işleniyor.`);
-                    extractedDocumentNumbers.add(data['Doküman Kodu']);
+                const docCode = data['Doküman Kodu'];
+                const revisionNo = parseInt(data['Revizyon No']) || 0;
 
-                    const masterDoc = updatedMasterList[data['Doküman Kodu']];
-                    if (masterDoc) {
-                        console.log(`LOG: Ana listede belge bilgisi bulundu. Güncelleme yapılıyor.`);
-                        
-                        // Yalnızca yeni dosyadan gelen geçerli ve boş olmayan bilgileri güncelle
-                        updatedMasterList[data['Doküman Kodu']]['Doküman Adı'] = data['Doküman Adı'] || masterDoc['Doküman Adı'];
-                        // Sorumlu Kısım güncellenmiyor
-                        updatedMasterList[data['Doküman Kodu']]['Revizyon No'] = data['Revizyon No'] || masterDoc['Revizyon No'];
-                        updatedMasterList[data['Doküman Kodu']]['Hazırlama Tarihi'] = data['Hazırlama Tarihi'] || masterDoc['Hazırlama Tarihi'];
-                        updatedMasterList[data['Doküman Kodu']]['Revizyon Tarihi'] = data['Revizyon Tarihi'] || masterDoc['Revizyon Tarihi'];
-                        
-                        if (data['Doküman Adı']) console.log(`LOG: ${data['Doküman Kodu']} için 'Doküman Adı' yeni dosyadan güncellendi.`);
-                        else console.log(`LOG: ${data['Doküman Kodu']} için 'Doküman Adı' ana listeden korundu.`);
-                        
-                        console.log(`LOG: ${data['Doküman Kodu']} için 'Sorumlu Kısım' ana listeden korundu.`);
-
-                        if (data['Revizyon No']) console.log(`LOG: ${data['Doküman Kodu']} için 'Revizyon No' yeni dosyadan güncellendi.`);
-                        else console.log(`LOG: ${data['Doküman Kodu']} için 'Revizyon No' ana listeden korundu.`);
-                        
-                    } else {
-                        console.log(`LOG: Belge ${data['Doküman Kodu']} ana listede bulunamadı. Yeni kayıt olarak ekleniyor.`);
-                        const newDoc = {};
-                        originalHeaders.forEach(header => {
-                            newDoc[header] = data[header] || '';
-                        });
-                        updatedMasterList[data['Doküman Kodu']] = newDoc;
-                    }
+                // Eğer bu doküman kodu daha önce görülmediyse veya daha yüksek revizyon numarası varsa
+                if (!highestRevisionDocs[docCode] || revisionNo > (parseInt(highestRevisionDocs[docCode]['Revizyon No']) || 0)) {
+                    highestRevisionDocs[docCode] = data;
                 }
             }
 
@@ -303,6 +277,37 @@ app.post('/upload', upload.array('files'), async (req, res) => {
                 console.log(`LOG: Dosya başarıyla silindi: ${file.path}`);
             } catch (e) {
                 console.error(`HATA: Dosya silinirken hata oluştu: ${file.path}`, e);
+            }
+        }
+        
+        // En yüksek revizyonlu belgelerle ana listeyi güncelle
+        for (const docCode in highestRevisionDocs) {
+            const data = highestRevisionDocs[docCode];
+            const masterDoc = updatedMasterList[docCode];
+
+            if (masterDoc) {
+                console.log(`\nLOG: Ana listede belge bilgisi bulundu (${docCode}). En yüksek revizyonlu dosya ile güncelleme yapılıyor.`);
+                
+                updatedMasterList[docCode]['Doküman Adı'] = data['Doküman Adı'] || masterDoc['Doküman Adı'];
+                // Sorumlu Kısım güncellenmiyor
+                updatedMasterList[docCode]['Revizyon No'] = data['Revizyon No'] || masterDoc['Revizyon No'];
+                updatedMasterList[docCode]['Hazırlama Tarihi'] = data['Hazırlama Tarihi'] || masterDoc['Hazırlama Tarihi'];
+                updatedMasterList[docCode]['Revizyon Tarihi'] = data['Revizyon Tarihi'] || masterDoc['Revizyon Tarihi'];
+                
+                if (data['Doküman Adı']) console.log(`LOG: ${docCode} için 'Doküman Adı' yeni dosyadan güncellendi.`);
+                else console.log(`LOG: ${docCode} için 'Doküman Adı' ana listeden korundu.`);
+                
+                console.log(`LOG: ${docCode} için 'Sorumlu Kısım' ana listeden korundu.`);
+
+                if (data['Revizyon No']) console.log(`LOG: ${docCode} için 'Revizyon No' yeni dosyadan güncellendi.`);
+                else console.log(`LOG: ${docCode} için 'Revizyon No' ana listeden korundu.`);
+            } else {
+                console.log(`\nLOG: Belge ${docCode} ana listede bulunamadı. Yeni kayıt olarak ekleniyor.`);
+                const newDoc = {};
+                originalHeaders.forEach(header => {
+                    newDoc[header] = data[header] || '';
+                });
+                updatedMasterList[docCode] = newDoc;
             }
         }
         
