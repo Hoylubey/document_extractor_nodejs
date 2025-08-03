@@ -217,7 +217,7 @@ async function extractInfo(filePath, originalRelativePath) {
         'Doküman Kodu': '',
         'Hazırlama Tarihi': '',
         'Revizyon Tarihi': '',
-        'Revizyon No': '0',
+        'Revizyon No': '',
         'Döküman Adı': '',
         'Sorumlu Kısım': ''
     };
@@ -356,15 +356,27 @@ app.post('/upload', upload.array('files'), async (req, res) => {
                     if (updatedMasterList[docCode]) {
                         console.log(`LOG: Ana listede belge bilgisi bulundu. Güncelleme yapılıyor.`);
                         
-                        // Güncellenecek alanları belirle ve sadece boş olmayanları güncelle
-                        const fieldsToUpdate = ['Döküman Adı', 'Sorumlu Kısım', 'Revizyon No', 'Hazırlama Tarihi', 'Revizyon Tarihi'];
-
-                        fieldsToUpdate.forEach(field => {
-                            if (data[field]) {
-                                updatedMasterList[docCode][field] = data[field];
-                                console.log(`LOG: ${docCode} için '${field}' güncellendi.`);
-                            }
-                        });
+                        // Sadece boş olmayan ve geçerli verilerle güncelle
+                        if (data['Döküman Adı'] && data['Döküman Adı'].trim() !== '') {
+                            updatedMasterList[docCode]['Döküman Adı'] = data['Döküman Adı'];
+                            console.log(`LOG: ${docCode} için 'Döküman Adı' güncellendi.`);
+                        }
+                        if (data['Sorumlu Kısım'] && data['Sorumlu Kısım'].trim() !== '') {
+                            updatedMasterList[docCode]['Sorumlu Kısım'] = data['Sorumlu Kısım'];
+                            console.log(`LOG: ${docCode} için 'Sorumlu Kısım' güncellendi.`);
+                        }
+                        if (data['Revizyon No'] && data['Revizyon No'].trim() !== '') {
+                            updatedMasterList[docCode]['Revizyon No'] = data['Revizyon No'];
+                            console.log(`LOG: ${docCode} için 'Revizyon No' güncellendi.`);
+                        }
+                        if (data['Hazırlama Tarihi'] && data['Hazırlama Tarihi'].trim() !== '') {
+                            updatedMasterList[docCode]['Hazırlama Tarihi'] = data['Hazırlama Tarihi'];
+                            console.log(`LOG: ${docCode} için 'Hazırlama Tarihi' güncellendi.`);
+                        }
+                        if (data['Revizyon Tarihi'] && data['Revizyon Tarihi'].trim() !== '') {
+                            updatedMasterList[docCode]['Revizyon Tarihi'] = data['Revizyon Tarihi'];
+                            console.log(`LOG: ${docCode} için 'Revizyon Tarihi' güncellendi.`);
+                        }
                         
                     } else {
                         console.log(`LOG: Belge ${docCode} ana listede bulunamadı. Yeni kayıt olarak ekleniyor.`);
