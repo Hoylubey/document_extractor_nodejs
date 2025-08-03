@@ -42,44 +42,56 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Excel verisini ayrıştırmak için yeni fonksiyon
+// Excel verisini daha esnek bir şekilde ayrıştırmak için yeni fonksiyon
 async function parseExcelData(excelFilePath) {
     try {
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.readFile(excelFilePath);
-        const worksheet = workbook.getWorksheet(MASTER_FILE_NAME);
+        const worksheet = workbook.getWorksheet(1); // İlk sayfayı al
+
         if (!worksheet) {
-            console.error(`HATA: '${MASTER_FILE_NAME}' adında bir sayfa bulunamadı.`);
+            console.error("HATA: Excel dosyasında sayfa bulunamadı.");
             return { masterList: {}, headers: [] };
         }
 
-        const masterList = {};
-        const headers = [];
-        const headerRow = worksheet.getRow(4); // Başlık satırının 4. satırda olduğunu varsayıyoruz
-
-        if (!headerRow || headerRow.getCell(1).value !== 'Doküman Kodu') {
-            console.error("HATA: Excel dosyasında 'Doküman Kodu' başlığı 4. satırda bulunamadı. Lütfen dosya formatını kontrol edin.");
-            return { masterList: {}, headers: [] };
-        }
-
-        headerRow.eachCell((cell, colNumber) => {
-            let headerValue = cell.value;
-            if (typeof headerValue === 'object' && headerValue !== null) {
-                if (headerValue.richText) {
-                    headerValue = headerValue.richText.map(t => t.text).join('');
-                } else if (headerValue.formula) {
-                    headerValue = headerValue.result;
+        let headerRowNumber = -1;
+        const searchLimit = 10; // İlk 10 satırı kontrol et
+        
+        // "Doküman Kodu" başlığını içeren satırı bul
+        for (let i = 1; i <= Math.min(worksheet.rowCount, searchLimit); i++) {
+            const row = worksheet.getRow(i);
+            let found = false;
+            row.eachCell((cell) => {
+                if (String(cell.value).trim() === 'Doküman Kodu') {
+                    headerRowNumber = i;
+                    found = true;
+                    return false; // Döngüyü durdur
                 }
-            }
-            // Başlıkları temizle (örn. \n karakterini kaldır)
-            headers.push(String(headerValue).replace(/\n/g, ' ').trim());
+            });
+            if (found) break;
+        }
+
+        if (headerRowNumber === -1) {
+            console.error("HATA: Excel dosyasında 'Doküman Kodu' başlığı ilk 10 satırda bulunamadı.");
+            return { masterList: {}, headers: [] };
+        }
+
+        const headers = [];
+        const headerRow = worksheet.getRow(headerRowNumber);
+        headerRow.eachCell((cell) => {
+            headers.push(String(cell.value).replace(/\n/g, ' ').trim());
         });
-
-        // Veri satırlarını oku, 5. satırdan başlayarak
-        worksheet.eachRow((row, rowNumber) => {
-            if (rowNumber < 5) return;
-
-            const docCodeCell = row.getCell(headers.indexOf('Doküman Kodu') + 1);
+        
+        const docCodeIndex = headers.indexOf('Doküman Kodu');
+        if (docCodeIndex === -1) {
+            console.error("HATA: 'Doküman Kodu' sütunu başlıklar arasında bulunamadı.");
+            return { masterList: {}, headers: [] };
+        }
+        
+        const masterList = {};
+        for (let i = headerRowNumber + 1; i <= worksheet.rowCount; i++) {
+            const row = worksheet.getRow(i);
+            const docCodeCell = row.getCell(docCodeIndex + 1);
             const docCode = docCodeCell.value ? String(docCodeCell.value).trim() : null;
 
             if (docCode) {
@@ -104,13 +116,13 @@ async function parseExcelData(excelFilePath) {
                 });
                 masterList[docCode] = docData;
             }
-        });
-
+        }
+        
         console.log(`LOG: Ana listede ${Object.keys(masterList).length} adet belge bilgisi başarıyla yüklendi.`);
-        return { masterList, headers, workbook };
+        return { masterList, headers };
     } catch (e) {
         console.error("KRİTİK HATA: Excel dosyasını ayrıştırma sırasında genel hata oluştu:", e);
-        return { masterList: {}, headers: [], workbook: null };
+        return { masterList: {}, headers: [] };
     }
 }
 
@@ -210,7 +222,6 @@ async function createUpdatedExcelBuffer(updatedList, headers) {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet(MASTER_FILE_NAME);
     
-    // Header satırını ekle
     worksheet.addRow(headers);
     
     const updatedRecords = Object.values(updatedList);
