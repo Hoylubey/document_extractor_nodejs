@@ -263,6 +263,19 @@ app.post('/upload', upload.array('files'), async (req, res) => {
             const data = await extractInfo(file.path, originalRelativePath);
 
             if (data && data['Doküman Kodu']) {
+                // "kopya" içeren dosyaları atla
+                if (data['Doküman Adı'] && data['Doküman Adı'].toLowerCase().includes('kopya')) {
+                    console.log(`LOG: Dosya adı "kopya" içerdiği için atlanıyor: ${originalRelativePath}`);
+                    // Dosyayı sil
+                    try {
+                        fs.unlinkSync(file.path);
+                        console.log(`LOG: Atlanan dosya başarıyla silindi: ${file.path}`);
+                    } catch (e) {
+                        console.error(`HATA: Dosya silinirken hata oluştu: ${file.path}`, e);
+                    }
+                    continue; // Bir sonraki dosyaya geç
+                }
+                
                 const docCode = data['Doküman Kodu'];
                 const revisionNo = parseInt(data['Revizyon No']) || 0;
 
