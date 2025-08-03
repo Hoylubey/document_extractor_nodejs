@@ -16,7 +16,9 @@ const MASTER_XLSX_PATH = path.join(__dirname, 'Doküman Özet Listesi.xlsx');
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        fs.ensureDir(UPLOAD_DIR, cb);
+        fs.ensureDir(UPLOAD_DIR)
+            .then(() => cb(null, UPLOAD_DIR))
+            .catch(err => cb(err));
     },
     filename: (req, file, cb) => {
         const uniqueName = `${uuidv4()}${path.extname(file.originalname)}`;
@@ -116,6 +118,7 @@ app.post('/upload', upload.array('files'), async (req, res) => {
         res.setHeader('Content-Disposition', 'attachment; filename=Belge_Bilgileri.xlsx');
         res.send(buffer);
     } catch (e) {
+        console.error(e);
         res.status(500).send('Sunucu hatası');
     }
 });
