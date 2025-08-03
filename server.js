@@ -247,6 +247,7 @@ async function extractInfo(filePath, originalRelativePath) {
             docInfo['Döküman Adı'] = tempFileName.substring(lastHyphenIndex + 1).trim();
         } else {
             docInfo['Doküman Kodu'] = tempFileName.trim();
+            docInfo['Döküman Adı'] = '';
         }
         
         console.log(`LOG: Ayrıştırılan bilgiler: Doküman Kodu: ${docInfo['Doküman Kodu']}, Revizyon No: ${docInfo['Revizyon No']}, Döküman Adı: ${docInfo['Döküman Adı']}`);
@@ -357,24 +358,26 @@ app.post('/upload', upload.array('files'), async (req, res) => {
                         console.log(`LOG: Ana listede belge bilgisi bulundu. Güncelleme yapılıyor.`);
                         
                         // Sadece boş olmayan ve geçerli verilerle güncelle
+                        const newDocData = updatedMasterList[docCode];
+                        
                         if (data['Döküman Adı'] && data['Döküman Adı'].trim() !== '') {
-                            updatedMasterList[docCode]['Döküman Adı'] = data['Döküman Adı'];
+                            newDocData['Döküman Adı'] = data['Döküman Adı'];
                             console.log(`LOG: ${docCode} için 'Döküman Adı' güncellendi.`);
                         }
                         if (data['Sorumlu Kısım'] && data['Sorumlu Kısım'].trim() !== '') {
-                            updatedMasterList[docCode]['Sorumlu Kısım'] = data['Sorumlu Kısım'];
+                            newDocData['Sorumlu Kısım'] = data['Sorumlu Kısım'];
                             console.log(`LOG: ${docCode} için 'Sorumlu Kısım' güncellendi.`);
                         }
                         if (data['Revizyon No'] && data['Revizyon No'].trim() !== '') {
-                            updatedMasterList[docCode]['Revizyon No'] = data['Revizyon No'];
+                            newDocData['Revizyon No'] = data['Revizyon No'];
                             console.log(`LOG: ${docCode} için 'Revizyon No' güncellendi.`);
                         }
                         if (data['Hazırlama Tarihi'] && data['Hazırlama Tarihi'].trim() !== '') {
-                            updatedMasterList[docCode]['Hazırlama Tarihi'] = data['Hazırlama Tarihi'];
+                            newDocData['Hazırlama Tarihi'] = data['Hazırlama Tarihi'];
                             console.log(`LOG: ${docCode} için 'Hazırlama Tarihi' güncellendi.`);
                         }
                         if (data['Revizyon Tarihi'] && data['Revizyon Tarihi'].trim() !== '') {
-                            updatedMasterList[docCode]['Revizyon Tarihi'] = data['Revizyon Tarihi'];
+                            newDocData['Revizyon Tarihi'] = data['Revizyon Tarihi'];
                             console.log(`LOG: ${docCode} için 'Revizyon Tarihi' güncellendi.`);
                         }
                         
