@@ -319,28 +319,33 @@ app.post('/upload', upload.array('files'), async (req, res) => {
             const originalRelativePath = file.originalname;
             const data = await extractInfo(file.path, originalRelativePath);
             
-            if (data && data['Doküman Kodu'] && !extractedDocumentNumbers.has(data['Doküman Kodu'])) {
-                console.log(`\nLOG: Belge ${data['Doküman Kodu']} işleniyor.`);
-                extractedDocumentNumbers.add(data['Doküman Kodu']);
+            if (data && data['Doküman Kodu']) {
+                if (!extractedDocumentNumbers.has(data['Doküman Kodu'])) {
+                    console.log(`\nLOG: Belge ${data['Doküman Kodu']} işleniyor.`);
+                    extractedDocumentNumbers.add(data['Doküman Kodu']);
 
-                const masterDoc = masterDocumentList[data['Doküman Kodu']];
-                if (masterDoc) {
-                    console.log(`LOG: Ana listede belge bilgisi bulundu. Güncelleme yapılıyor.`);
-                    
-                    if (data['Revizyon No']) updatedMasterList[data['Doküman Kodu']]['Revizyon No'] = data['Revizyon No'];
-                    if (data['Revizyon Tarihi']) updatedMasterList[data['Doküman Kodu']]['Revizyon Tarihi'] = data['Revizyon Tarihi'];
-                    if (data['Hazırlama Tarihi']) updatedMasterList[data['Doküman Kodu']]['Hazırlama Tarihi'] = data['Hazırlama Tarihi'];
-                    if (data['Döküman Adı']) updatedMasterList[data['Doküman Kodu']]['Döküman Adı'] = data['Döküman Adı'];
-                    if (data['Sorumlu Kısım']) updatedMasterList[data['Doküman Kodu']]['Sorumlu Kısım'] = data['Sorumlu Kısım'];
+                    const masterDoc = updatedMasterList[data['Doküman Kodu']];
+                    if (masterDoc) {
+                        console.log(`LOG: Ana listede belge bilgisi bulundu. Güncelleme yapılıyor.`);
+                        
+                        // Yeni dosyadan gelen her bir geçerli bilgi için mevcut kaydı güncelliyoruz
+                        for (const key in data) {
+                            // Sadece boş olmayan değerleri güncelle
+                            if (data[key] && key !== 'Doküman Kodu') {
+                                updatedMasterList[data['Doküman Kodu']][key] = data[key];
+                                console.log(`LOG: ${data['Doküman Kodu']} için '${key}' güncellendi.`);
+                            }
+                        }
 
-                } else {
-                    console.log(`LOG: Belge ${data['Doküman Kodu']} ana listede bulunamadı. Yeni kayıt olarak ekleniyor.`);
-                    // Yeni kaydı, ana listedeki tüm başlıklarla birlikte ekliyoruz.
-                    const newDoc = {};
-                    originalHeaders.forEach(header => {
-                        newDoc[header] = data[header] || '';
-                    });
-                    updatedMasterList[data['Doküman Kodu']] = newDoc;
+                    } else {
+                        console.log(`LOG: Belge ${data['Doküman Kodu']} ana listede bulunamadı. Yeni kayıt olarak ekleniyor.`);
+                        // Yeni kaydı, ana listedeki tüm başlıklarla birlikte ekliyoruz.
+                        const newDoc = {};
+                        originalHeaders.forEach(header => {
+                            newDoc[header] = data[header] || '';
+                        });
+                        updatedMasterList[data['Doküman Kodu']] = newDoc;
+                    }
                 }
             }
 
