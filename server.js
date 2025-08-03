@@ -101,7 +101,6 @@ async function parseExcelData(excelFilePath) {
                     const cellValue = row.getCell(colIndex + 1).value;
                     let value = '';
                     if (cellValue instanceof Date) {
-                         // Hata veren satır yerine, tarihleri düzgün bir stringe dönüştür
                         const d = cellValue;
                         value = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
                     } else if (typeof cellValue === 'object' && cellValue !== null) {
@@ -274,9 +273,8 @@ app.post('/upload', upload.array('files'), async (req, res) => {
                         console.log(`LOG: Ana listede belge bilgisi bulundu. Güncelleme yapılıyor.`);
                         
                         // Yalnızca yeni dosyadan gelen geçerli ve boş olmayan bilgileri güncelle
-                        // Eğer yeni dosyadan gelen bilgi boşsa, ana listedekini koru
                         updatedMasterList[data['Doküman Kodu']]['Doküman Adı'] = data['Doküman Adı'] || masterDoc['Doküman Adı'];
-                        updatedMasterList[data['Doküman Kodu']]['Sorumlu Kısım'] = data['Sorumlu Kısım'] || masterDoc['Sorumlu Kısım'];
+                        // Sorumlu Kısım güncellenmiyor
                         updatedMasterList[data['Doküman Kodu']]['Revizyon No'] = data['Revizyon No'] || masterDoc['Revizyon No'];
                         updatedMasterList[data['Doküman Kodu']]['Hazırlama Tarihi'] = data['Hazırlama Tarihi'] || masterDoc['Hazırlama Tarihi'];
                         updatedMasterList[data['Doküman Kodu']]['Revizyon Tarihi'] = data['Revizyon Tarihi'] || masterDoc['Revizyon Tarihi'];
@@ -284,8 +282,7 @@ app.post('/upload', upload.array('files'), async (req, res) => {
                         if (data['Doküman Adı']) console.log(`LOG: ${data['Doküman Kodu']} için 'Doküman Adı' yeni dosyadan güncellendi.`);
                         else console.log(`LOG: ${data['Doküman Kodu']} için 'Doküman Adı' ana listeden korundu.`);
                         
-                        if (data['Sorumlu Kısım']) console.log(`LOG: ${data['Doküman Kodu']} için 'Sorumlu Kısım' yeni dosyadan güncellendi.`);
-                        else console.log(`LOG: ${data['Doküman Kodu']} için 'Sorumlu Kısım' ana listeden korundu.`);
+                        console.log(`LOG: ${data['Doküman Kodu']} için 'Sorumlu Kısım' ana listeden korundu.`);
 
                         if (data['Revizyon No']) console.log(`LOG: ${data['Doküman Kodu']} için 'Revizyon No' yeni dosyadan güncellendi.`);
                         else console.log(`LOG: ${data['Doküman Kodu']} için 'Revizyon No' ana listeden korundu.`);
