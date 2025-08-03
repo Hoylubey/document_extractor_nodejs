@@ -296,26 +296,27 @@ async function createMasterListBuffer(updatedList) {
     worksheet.addRow(headers);
     
     updatedRecords.forEach(doc => {
-        worksheet.addRow([
-            doc['Döküman No'],
-            doc['Döküman Adı'],
-            '', // Doküman İngilizce Adı
-            '', // Tipi
-            doc['Tarih'],
-            doc['Revizyon Sayısı'],
-            doc['Revizyon Tarihi'],
-            '', // Revize Eden
-            doc['Sorumlu Departman'],
-            '', // Revizyon Nedeni
-            '', // Revizyon
-            '', // Son Gözden Geçirme Tarihi
-            '', // Gelecek Gözden Geçirme Tarihi
-            '', // Gözden Geçirme Periyodu
-            '', // Onay Tarihi
-            '', // Kullanıldığı Süreçler
-            '', // Doküman Sorumlusu
-            ''  // Arşivleme Süresi
-        ]);
+        const rowData = headers.map(header => {
+            switch (header) {
+                case 'Doküman Kodu':
+                    return doc['Döküman No'] || '';
+                case 'Döküman Adı':
+                    return doc['Döküman Adı'] || '';
+                case 'Hazırlama Tarihi':
+                    return doc['Tarih'] || '';
+                case 'Revizyon No':
+                    return doc['Revizyon Sayısı'] || '0';
+                case 'Revizyon Tarihi':
+                    return doc['Revizyon Tarihi'] || '';
+                case 'Sorumlu Kısım':
+                    return doc['Sorumlu Departman'] || '';
+                default:
+                    // Diğer başlıklar için mevcut veri varsa kullan, yoksa boş bırak.
+                    // parseMasterList fonksiyonunda okunan veriler headers ile eşleşmiyorsa bu kısım boş kalacaktır.
+                    return '';
+            }
+        });
+        worksheet.addRow(rowData);
     });
     
     return workbook.xlsx.writeBuffer();
@@ -358,8 +359,6 @@ app.post('/upload', upload.array('files'), async (req, res) => {
                 if (masterDoc) {
                     console.log(`LOG: Ana listede belge bilgisi bulundu. Güncelleme yapılıyor.`);
                     
-                    // Var olan kaydı, sadece yeni dosyadan gelen veri geçerliyse güncelliyoruz.
-                    // Bu kontrol, eski verilerin yanlışlıkla boş değerlerle silinmesini engeller.
                     if (data['Revizyon Sayısı']) updatedMasterList[data['Döküman No']]['Revizyon Sayısı'] = data['Revizyon Sayısı'];
                     if (data['Revizyon Tarihi']) updatedMasterList[data['Döküman No']]['Revizyon Tarihi'] = data['Revizyon Tarihi'];
                     if (data['Tarih']) updatedMasterList[data['Döküman No']]['Tarih'] = data['Tarih'];
@@ -383,7 +382,6 @@ app.post('/upload', upload.array('files'), async (req, res) => {
             return res.status(400).send('Hiçbir geçerli belge işlenemedi veya ana liste oluşturulamadı.');
         }
 
-        // Güncellenmiş ana listeyi Excel dosyası olarak oluştur ve gönder
         const updatedMasterListBuffer = await createMasterListBuffer(updatedMasterList);
         
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
