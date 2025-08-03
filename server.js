@@ -327,7 +327,6 @@ app.post('/upload', upload.array('files'), async (req, res) => {
                 if (masterDoc) {
                     console.log(`LOG: Ana listede belge bilgisi bulundu. Güncelleme yapılıyor.`);
                     
-                    // Var olan kaydı, sadece yeni dosyadan gelen veri geçerliyse güncelliyoruz.
                     if (data['Revizyon No']) updatedMasterList[data['Doküman Kodu']]['Revizyon No'] = data['Revizyon No'];
                     if (data['Revizyon Tarihi']) updatedMasterList[data['Doküman Kodu']]['Revizyon Tarihi'] = data['Revizyon Tarihi'];
                     if (data['Hazırlama Tarihi']) updatedMasterList[data['Doküman Kodu']]['Hazırlama Tarihi'] = data['Hazırlama Tarihi'];
@@ -336,8 +335,12 @@ app.post('/upload', upload.array('files'), async (req, res) => {
 
                 } else {
                     console.log(`LOG: Belge ${data['Doküman Kodu']} ana listede bulunamadı. Yeni kayıt olarak ekleniyor.`);
-                    // Yeni kaydı listeye ekliyoruz
-                    updatedMasterList[data['Doküman Kodu']] = data;
+                    // Yeni kaydı, ana listedeki tüm başlıklarla birlikte ekliyoruz.
+                    const newDoc = {};
+                    originalHeaders.forEach(header => {
+                        newDoc[header] = data[header] || '';
+                    });
+                    updatedMasterList[data['Doküman Kodu']] = newDoc;
                 }
             }
 
