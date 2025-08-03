@@ -231,7 +231,7 @@ async function extractInfo(filePath, originalRelativePath) {
     } catch (e) {
         console.error("HATA: Dosya adı işlenirken hata oluştu:", e);
         docInfo['Doküman Kodu'] = fileNameWithoutExt.trim();
-        docInfo['Döküman Adı'] = '';
+        docInfo['Doküman Adı'] = '';
     }
 
     const pathSegments = originalRelativePath.split(/[\\/]/);
@@ -379,3 +379,4 @@ app.listen(PORT, () => {
     console.log(`Sunucu http://localhost:${PORT} adresinde çalışıyor`);
     fs.ensureDirSync(UPLOAD_DIR);
 });
+
